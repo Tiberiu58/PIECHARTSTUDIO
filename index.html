@@ -1,0 +1,1542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pie Chart Studio</title>
+<style>
+:root{
+  --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a;
+  --text:#e7e9ee; --muted:#9aa3b2; --accent:#5b8cff;
+  --radius:10px;
+}
+[data-theme="light"]{
+  --bg:#f5f6f8; --panel:#ffffff; --panel2:#f0f2f5; --line:#dde1e8;
+  --text:#161a20; --muted:#5d6673; --accent:#2f6bff;
+}
+*{box-sizing:border-box}
+html,body{max-width:100%;overflow-x:hidden}
+body{margin:0;font:14px/1.5 Georgia,"Times New Roman","Nimbus Roman",serif;background:var(--bg);color:var(--text)}
+.rb-top{display:flex;align-items:center;gap:8px;padding:5px 10px;background:var(--panel);
+  border-bottom:1px solid var(--line);flex-wrap:nowrap;min-width:0}
+.rb-top h1{font-size:14px;margin:0 6px 0 0;font-weight:650;letter-spacing:.2px;white-space:nowrap;flex:none}
+.rb-top .spacer{flex:1;min-width:6px}
+.rb-top button{flex:none}
+.wrap{}
+.side{background:var(--panel);border-right:1px solid var(--line);padding:16px;overflow:auto}
+.stage{padding:14px 12px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
+  gap:12px;height:calc(100vh - var(--chromeH,120px));overflow:hidden}
+#chartWrap{position:relative;display:inline-block;max-width:calc(100% - 104px);margin-left:96px}
+/* Legend toggle: sits outside the exported canvas, level with the legend. */
+#legendBtn{position:absolute;right:calc(100% + 8px);transform:translateY(-50%);
+  white-space:nowrap;font-size:11.5px;padding:4px 9px;line-height:1.2;
+  background:var(--panel);border:1px solid var(--line);color:var(--muted);cursor:pointer}
+#legendBtn:hover{border-color:var(--accent);color:var(--text)}
+#legendBtn[hidden]{display:none}
+.card{background:var(--panel2);border:1px solid var(--line);border-radius:0;padding:12px;margin-bottom:14px}
+.card h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px}
+label{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px}
+input[type=text],input[type=number],select,textarea{
+  width:100%;padding:7px 9px;background:var(--bg);color:var(--text);
+  border:1px solid var(--line);border-radius:0;font:inherit;font-size:13px;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+input[type=color]{width:34px;height:30px;padding:0;border:1px solid var(--line);border-radius:0;background:none;cursor:pointer;flex:none}
+input[type=range]{width:100%;accent-color:var(--accent)}
+button{font:inherit;font-size:13px;padding:7px 12px;border-radius:0;border:1px solid var(--line);
+  background:var(--panel2);color:var(--text);cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button.ghost{background:transparent}
+button.icon{padding:4px 8px;line-height:1}
+.row{display:flex;gap:8px;align-items:center}
+.row>*{min-width:0}
+.slice{display:flex;gap:6px;align-items:center;margin-bottom:6px}
+.slice input[type=text]{flex:1}
+.slice input[type=number]{width:80px;flex:none}
+.slice .grip{cursor:grab;color:var(--muted);user-select:none;padding:0 2px;flex:none}
+.slice.drag{opacity:.4}
+.pct{font-size:11px;color:var(--muted);width:46px;text-align:right;flex:none}
+.chk{display:flex;align-items:center;gap:7px;margin:7px 0;font-size:13px;color:var(--text)}
+.chk input{accent-color:var(--accent);width:15px;height:15px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.swatches{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.sw{width:28px;height:22px;border-radius:0;border:1px solid var(--line);cursor:pointer;overflow:hidden;display:flex}
+.sw i{flex:1;display:block}
+#chartBox{border-radius:0;max-width:100%;overflow:visible;user-select:none;line-height:0;
+  display:block}
+/* The on-screen SVG carries only a viewBox, so give it an explicit box to
+   scale into: full width up to its natural size, height follows the ratio. */
+#chartBox svg{width:var(--chartW,1004px);max-width:100%;max-height:var(--chartMaxH,none);
+  height:auto;display:block}
+.slice-path{cursor:pointer;transition:opacity .12s}
+.slice-path:hover{opacity:.86}
+.slice-path.is-sel{filter:brightness(1.14) drop-shadow(0 0 6px rgba(0,0,0,.45))}
+.edge-handle{cursor:ew-resize}
+.lbl{cursor:text}
+.lbl:hover{text-decoration:underline}
+#lblEdit{position:absolute;z-index:60;font:inherit;font-weight:600;padding:3px 6px;
+  border:2px solid var(--accent);border-radius:0;background:#fff;color:#111;
+  box-shadow:0 4px 14px rgba(0,0,0,.25);min-width:90px}
+/* contextual inspector floating under the chart */
+  background:var(--panel);border:1px solid var(--line);border-radius:0;padding:10px 14px;
+  box-shadow:0 6px 24px rgba(0,0,0,.18);min-height:52px;max-width:860px;width:100%}
+  border-radius:0;background:var(--bg);width:200px;flex:0 0 200px}
+  border:1px solid var(--line);background:var(--panel2);cursor:pointer;font-size:12.5px}
+
+/* ---- Office-style ribbon: one thin row, always fits the screen ---- */
+#ribbon{background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:40;
+  overflow:hidden}
+.rb-tabs{display:flex;gap:0;padding:0;flex:none}
+.rb-tab{padding:4px 12px;font-size:12.5px;border:1px solid transparent;
+  border-radius:0;cursor:pointer;color:var(--muted);background:none;white-space:nowrap}
+.rb-tab:hover{color:var(--text);background:var(--panel2)}
+.rb-tab[aria-selected=true]{background:var(--bg);border-color:var(--line);color:var(--text);font-weight:600}
+.rb-tab.ctx{color:var(--accent)}
+.rb-tab.ctx[aria-selected=true]{color:var(--accent)}
+.rb-tab[hidden]{display:none}
+.rb-body{background:var(--bg);padding:0;overflow:hidden}
+.rb-panel{display:none}
+/* Groups share the row and shrink to fit: no horizontal scrollbar, no dead space. */
+.rb-panel.on{display:flex;align-items:center;flex-wrap:nowrap;height:36px;gap:0;width:100%}
+.rb-group{display:flex;align-items:center;gap:5px;height:100%;
+  padding:0 7px;border-right:1px solid var(--line);
+  flex:1 1 auto;min-width:0;justify-content:center}
+.rb-group:last-child{border-right:none}
+.rb-group-label{display:none}
+.rb-items{display:flex;gap:5px;align-items:center;min-width:0}
+.rb-col{display:flex;flex-direction:row;gap:5px;align-items:center;min-width:0}
+.rb-f{display:flex;align-items:center;gap:4px;font-size:11.5px;color:var(--muted);
+  white-space:nowrap;min-width:0}
+.rb-f input[type=text],.rb-f input[type=number],.rb-f select{width:auto;padding:3px 5px;font-size:11.5px;min-width:0}
+.rb-f input[type=color]{width:24px;height:21px;flex:none}
+.rb-f input[type=range]{width:100%;min-width:30px;max-width:82px}
+.rb-f .num{width:100%;min-width:28px;max-width:50px}
+.rb-f .txt{width:100%;min-width:52px;max-width:118px}
+.rb-f .sel{width:100%;min-width:44px;max-width:142px}
+.rb-big{display:inline-flex;flex-direction:row;align-items:center;justify-content:center;gap:4px;
+  padding:4px 8px;border:1px solid var(--line);border-radius:0;background:var(--panel);
+  cursor:pointer;font-size:11.5px;color:var(--text);white-space:nowrap;height:25px;
+  flex:0 1 auto;min-width:0;overflow:hidden}
+.rb-big:hover{border-color:var(--accent)}
+.rb-big.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.rb-big b{font-size:12.5px;line-height:1;font-weight:600}
+.rb-sw{display:flex;gap:2px;flex:0 1 auto;min-width:0;overflow:hidden}
+.rb-sw i{width:14px;height:14px;border-radius:0;cursor:pointer;border:1px solid var(--line);display:block}
+.rb-sw i:hover{outline:2px solid var(--accent);outline-offset:1px}
+.rb-empty{color:var(--muted);font-size:12.5px;padding:8px 12px}
+/* In-app messages replace browser alert()/confirm() dialogs. */
+#toasts{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:200;
+  display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
+.toast{pointer-events:auto;background:var(--panel);border:1px solid var(--line);
+  border-left:4px solid var(--accent);color:var(--text);padding:9px 14px;font-size:13px;
+  box-shadow:0 6px 20px rgba(0,0,0,.3);max-width:520px;animation:tin .16s ease-out}
+.toast.err{border-left-color:#e5484d}
+.toast.ok{border-left-color:#3fc79a}
+@keyframes tin{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+#confirmBox{border:1px solid var(--line);background:var(--panel);color:var(--text);
+  padding:18px;max-width:420px;width:90%}
+#confirmBox p{margin:0 0 14px;font-size:14px}
+#confirmBox .row{justify-content:flex-end}
+@media(max-width:1000px){.rb-f .pct{display:none}}
+@media(max-width:860px){.rb-f input[type=range]{max-width:56px}}
+.hint{font-size:11px;color:var(--muted);margin-top:6px}
+.total{font-size:12px;color:var(--muted);margin-top:8px;display:flex;justify-content:space-between}
+dialog{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:0;padding:18px;max-width:560px;width:92%}
+dialog::backdrop{background:rgba(0,0,0,.55)}
+textarea{min-height:150px;font-family:ui-monospace,Consolas,monospace;font-size:12px;resize:vertical}
+.tabs{display:flex;gap:4px;margin-bottom:10px}
+.tabs button{flex:1;font-size:12px}
+.tabs button[aria-selected=true]{background:var(--accent);border-color:var(--accent);color:#fff}
+code{background:var(--panel2);padding:1px 4px;border-radius:0}
+</style>
+</head>
+<body>
+<div id="ribbon">
+  <div class="rb-top">
+    <h1>Pie Chart Studio</h1>
+    <div class="rb-tabs" id="rbTabs">
+      <button class="rb-tab" data-tab="home" aria-selected="true">Home</button>
+      <button class="rb-tab" data-tab="design">Design</button>
+      <button class="rb-tab" data-tab="labels">Labels</button>
+      <button class="rb-tab ctx" data-tab="slice" id="tabSlice" hidden>Slice Tools</button>
+    </div>
+    <div class="spacer"></div>
+    <button id="btnData">Import / Paste data</button>
+    <button id="btnPng" class="primary">Download PNG</button>
+    <button id="btnSvg">SVG</button>
+    <button id="btnTheme" class="ghost" title="Toggle editor theme">Theme</button>
+  </div>
+  <div class="rb-body">
+
+    <!-- HOME -->
+    <div class="rb-panel on" data-panel="home">
+      <div class="rb-group">
+        <div class="rb-items">
+          <button class="rb-big" id="btnAdd"><b>+</b>Add slice</button>
+          <button class="rb-big" id="btnClear"><b>&#10005;</b>Clear</button>
+          <button class="rb-big" id="btnReset" title="Restore all chart options to defaults (slices are kept)"><b>&#8635;</b>Reset Options</button>
+          <span class="rb-f">Total <b id="totalVal" style="color:var(--text)">0</b></span>
+        </div>
+        <div class="rb-group-label">Slices</div>
+      </div>
+      <div class="rb-group">
+        <div class="rb-items"><div class="rb-col">
+          <div class="rb-f">Title <input type="text" class="txt" id="title" placeholder="My Portfolio"></div>
+          <div class="rb-f">Sub <input type="text" class="txt" id="subtitle" placeholder="Subtitle"></div>
+          <div class="rb-f">Mid <input type="text" class="txt" id="centerText" placeholder="$50,000"></div>
+        </div></div>
+        <div class="rb-group-label">Titles</div>
+      </div>
+      <div class="rb-group">
+        <div class="rb-items"><div class="rb-col">
+          <div class="rb-f"><select id="palette" class="sel" title="Palette"></select></div>
+          <div class="rb-sw" id="swatches"></div>
+          <div class="rb-f"><button id="btnApplyPal" title="Apply palette to all slices">Apply</button>
+            <button id="btnShuffle" title="Randomly reassign palette colors to slices">Shuffle</button></div>
+        </div></div>
+        <div class="rb-group-label">Colors</div>
+      </div>
+      <div class="rb-group">
+        <div class="rb-items">
+          <button class="rb-big" id="btnSave"><b>&#128190;</b>Save</button>
+          <button class="rb-big" id="btnLoad"><b>&#128194;</b>Load</button>
+        </div>
+        <div class="rb-group-label">Charts</div>
+      </div>
+    </div>
+
+    <!-- DESIGN -->
+    <div class="rb-panel" data-panel="design">
+      <div class="rb-group">
+        <div class="rb-items"><div class="rb-col">
+          <div class="rb-f">Hole <input type="range" id="hole" min="0" max="85"><span id="holeV" class="pct"></span></div>
+          <div class="rb-f">Gap <input type="range" id="pad" min="0" max="4" step="0.1"><span id="padV" class="pct"></span></div>
+        </div></div>
+        <div class="rb-group-label">Shape</div>
+      </div>
+      <div class="rb-group">
+        <div class="rb-items"><div class="rb-col">
+          <div class="rb-f">Angle <input type="range" id="start" min="0" max="360"><span id="startV" class="pct"></span></div>
+          <div class="rb-f"><select id="dir" class="sel" title="Direction">
+            <option value="1">CW</option><option value="-1">CCW</option></select></div>
+          <div class="rb-f">Size <input type="number" class="num" id="size" min="240" max="2000" step="20"></div>
+        </div></div>
+        <div class="rb-group-label">Layout</div>
+      </div>
+      <div class="rb-group">
+        <div class="rb-items"><div class="rb-col">
+          <div class="rb-f">BG <input type="color" id="bg"></div>
+          <div class="rb-f">Text <input type="color" id="fg"></div>
+          <label class="rb-f" title="Transparent background on export"><input type="checkbox" id="transparent"> Transp.</label>
+        </div></div>
+        <div class="rb-group-label">Canvas</div>
+      </div>
+      <div class="rb-group">
+        <div class="rb-items"><div class="rb-col">
+          <div class="rb-f">Bord. <input type="range" id="stroke" min="0" max="10" step="0.5"><span id="strokeV" class="pct"></span></div>
+          <div class="rb-f"><input type="color" id="strokeCol" title="Border color"></div>
+          <div class="rb-f">Expl. <input type="range" id="explode" min="0" max="40"><span id="explodeV" class="pct"></span></div>
+        </div></div>
+        <div class="rb-group-label">Borders</div>
+      </div>
+    </div>
+
+    <!-- LABELS -->
+    <div class="rb-panel" data-panel="labels">
+      <div class="rb-group">
+        <div class="rb-items"><div class="rb-col">
+          <div class="rb-f"><select id="labelMode" class="sel" title="Label style">
+            <option value="callout">Outside</option>
+            <option value="inside">Inside</option>
+            <option value="none">None</option></select></div>
+          <div class="rb-f"><select id="valMode" class="sel" title="Show value as">
+            <option value="pct">Percentage</option><option value="raw">Raw value</option>
+            <option value="both">Both</option><option value="nameonly">Name only</option></select></div>
+        </div></div>
+        <div class="rb-group-label">Label style</div>
+      </div>
+      <div class="rb-group">
+        <div class="rb-items"><div class="rb-col">
+          <div class="rb-f">Decimal <input type="number" class="num" id="decimals" min="0" max="4"></div>
+          <div class="rb-f">Font <input type="number" class="num" id="fontSize" min="8" max="40"></div>
+        </div></div>
+        <div class="rb-group-label">Text</div>
+      </div>
+      <div class="rb-group">
+        <div class="rb-items"><div class="rb-col">
+          <div class="rb-f">Prefix <input type="text" class="num" id="prefix" placeholder="$"></div>
+          <div class="rb-f">Suffix <input type="text" class="num" id="suffix" placeholder="RON"></div>
+        </div></div>
+        <div class="rb-group-label">Value format</div>
+      </div>
+      <div class="rb-group">
+        <div class="rb-items"><div class="rb-col">
+          <label class="rb-f"><input type="checkbox" id="legend"> Legend</label>
+          <label class="rb-f" title="Hide labels on small slices"><input type="checkbox" id="hideSmall"> Hide &lt;
+            <input type="number" class="num" id="smallPct" min="0" max="20" style="width:46px"> %</label>
+        </div></div>
+        <div class="rb-group-label">Visibility</div>
+      </div>
+    </div>
+
+    <!-- SLICE TOOLS (contextual) -->
+    <div class="rb-panel" data-panel="slice" id="panelSlice"></div>
+
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<div class="wrap">
+  <main class="stage">
+    <div id="chartWrap">
+      <div id="chartBox"></div>
+      <button id="legendBtn" type="button"></button>
+    </div>
+  </main>
+</div>
+
+<dialog id="dlgData">
+  <h3 style="margin:0 0 10px">Import data</h3>
+  <div class="tabs">
+    <button data-tab="paste" aria-selected="true">Paste</button>
+    <button data-tab="file">CSV file</button>
+  </div>
+  <div id="tab-paste">
+    <p class="hint" style="margin-top:0">One slice per line: <code>Name, Value</code>. Comma, tab or semicolon all work &mdash; paste straight from Excel.</p>
+    <textarea id="pasteBox" placeholder="Apple, 25&#10;Microsoft, 20&#10;Nvidia, 15&#10;S&amp;P 500 ETF, 30&#10;Cash, 10"></textarea>
+  </div>
+  <div id="tab-file" hidden>
+    <p class="hint" style="margin-top:0">Pick a .csv, .tsv or .txt file with two columns.</p>
+    <input type="file" id="fileIn" accept=".csv,.txt,.tsv">
+    <p class="hint" id="fileStatus"></p>
+  </div>
+  <div class="row" style="margin-top:12px;justify-content:flex-end">
+    <button id="dlgCancel" class="ghost">Cancel</button>
+    <button id="dlgAppend">Append</button>
+    <button id="dlgReplace" class="primary">Replace slices</button>
+  </div>
+</dialog>
+
+<dialog id="confirmBox">
+  <p id="confirmMsg"></p>
+  <div class="row"><button id="confirmNo" class="ghost">Cancel</button>
+    <button id="confirmYes" class="primary">OK</button></div>
+</dialog>
+
+<dialog id="dlgPresets">
+  <h3 style="margin:0 0 10px">Saved charts</h3>
+  <div id="presetList"></div>
+  <div class="row" style="margin-top:12px;justify-content:flex-end">
+    <button id="presetClose" class="ghost">Close</button>
+  </div>
+</dialog>
+
+<script>
+var $ = function(s){ return document.querySelector(s); };
+
+var PALETTES = {
+  "Studio":        ["#5B8CFF","#FF7A5A","#3FC79A","#F5C518","#A470FF","#FF5D9E","#2DC5E0","#8DBE3F","#FF9F43","#7A8699"],
+  "Portfolio":     ["#1F4E79","#2E75B6","#5B9BD5","#9DC3E6","#BDD7EE","#E0A458","#D45D5D","#7F7F7F","#A6A6A6","#C9C9C9"],
+  "Warm":          ["#F94144","#F3722C","#F8961E","#F9944B","#F9C74F","#E6B655","#C9A227","#B5651D","#8C4A2F","#5E3023"],
+  "Cool":          ["#03045E","#0077B6","#00B4D8","#48CAE4","#90E0EF","#ADE8F4","#4C6EF5","#6C8CFF","#3A0CA3","#7209B7"],
+  "Earth":         ["#606C38","#283618","#BC6C25","#DDA15E","#8A817C","#463F3A","#A4AC86","#656D4A","#C2C5AA","#7F4F24"],
+  "Pastel":        ["#A0C4FF","#BDB2FF","#FFC6FF","#FFADAD","#FFD6A5","#EEF08E","#CAFFBF","#9BF6FF","#D0F4DE","#E4C1F9"],
+  "Mono blue":     ["#0B2545","#134074","#13315C","#1B4965","#2A6F97","#468FAF","#61A5C2","#89C2D9","#A9D6E5","#CAF0F8"],
+  "Mono grey":     ["#212529","#343A40","#495057","#6C757D","#868E96","#ADB5BD","#CED4DA","#DEE2E6","#E9ECEF","#F1F3F5"],
+  "High contrast": ["#000000","#E69F00","#56B4E9","#009E73","#F0E442","#0072B2","#D55E00","#CC79A7","#999999","#5D3FD3"],
+  "Neon":          ["#39FF14","#FF073A","#0FF0FC","#FFF01F","#BC13FE","#FF6EC7","#04D9FF","#FE01B1","#FFD300","#7DF9FF"]
+};
+
+var DEFAULTS = {
+  slices: [],
+  title:"", subtitle:"", centerText:"",
+  hole:45, pad:1, round:0, start:0, size:640, dir:1,
+  labelMode:"callout", valMode:"pct", decimals:1, fontSize:14,
+  prefix:"", suffix:"", legend:true, hideSmall:false, smallPct:3,
+  palette:"Studio", bg:"#ffffff", fg:"#111111", transparent:false,
+  stroke:2, strokeCol:"#ffffff", explode:12
+};
+
+var DEFAULT_SLICES = [
+  {name:"S&P 500 ETF",       value:35, color:"#5B8CFF", out:false},
+  {name:"Nasdaq 100 ETF",    value:20, color:"#FF7A5A", out:false},
+  {name:"Individual stocks", value:20, color:"#3FC79A", out:false},
+  {name:"Bonds",             value:10, color:"#F5C518", out:false},
+  {name:"Gold",              value: 8, color:"#A470FF", out:false},
+  {name:"Cash",              value: 7, color:"#FF5D9E", out:false}
+];
+
+var state = JSON.parse(JSON.stringify(DEFAULTS));
+
+/* ---------------- persistence ---------------- */
+var LS_AUTO = "pcs_auto", LS_PRESETS = "pcs_presets";
+function autosave(){ try{ localStorage.setItem(LS_AUTO, JSON.stringify(state)); }catch(e){} }
+function autoload(){
+  try{
+    var s = JSON.parse(localStorage.getItem(LS_AUTO));
+    if(s && s.slices && s.slices.length){
+      for(var k in DEFAULTS) if(!(k in s)) s[k] = DEFAULTS[k];
+      state = s; return true;
+    }
+  }catch(e){}
+  return false;
+}
+
+/* ---------------- helpers ---------------- */
+function escAttr(s){ return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function fmtNum(n, dec){
+  if(!isFinite(n)) return "0";
+  var d = (dec === undefined) ? (+state.decimals || 0) : dec;
+  return n.toLocaleString(undefined,{minimumFractionDigits:0, maximumFractionDigits:d});
+}
+function nextColor(i){
+  var pal = PALETTES[state.palette] || PALETTES.Studio;
+  return pal[i % pal.length];
+}
+function polar(cx,cy,r,a){ return [cx + r*Math.cos(a), cy + r*Math.sin(a)]; }
+function contrast(hex){
+  var c = String(hex).replace("#","");
+  if(c.length !== 6) return "#111111";
+  var r=parseInt(c.slice(0,2),16), g=parseInt(c.slice(2,4),16), b=parseInt(c.slice(4,6),16);
+  return (0.299*r + 0.587*g + 0.114*b) > 150 ? "#111111" : "#ffffff";
+}
+
+/* ---------------- slice editor ---------------- */
+function renderSlices(){
+  var box = $("#slices");
+  if(!box){ updateTotals(); return; }   // list editor removed; the chart is the editor now
+  box.innerHTML = "";
+  state.slices.forEach(function(s, i){
+    var row = document.createElement("div");
+    row.className = "slice";
+    row.draggable = true;
+    row.innerHTML =
+      '<span class="grip" title="Drag to reorder">&#8942;&#8942;</span>' +
+      '<input type="color" value="' + s.color + '" data-k="color">' +
+      '<input type="text" value="' + escAttr(s.name) + '" data-k="name" placeholder="Name">' +
+      '<input type="number" value="' + s.value + '" data-k="value" step="any">' +
+      '<span class="pct"></span>' +
+      '<input type="checkbox" ' + (s.out ? "checked" : "") + ' data-k="out" title="Explode this slice" style="accent-color:var(--accent)">' +
+      '<button class="icon ghost" data-del title="Delete">&#10005;</button>';
+
+    Array.prototype.forEach.call(row.querySelectorAll("[data-k]"), function(inp){
+      inp.addEventListener("input", function(){
+        var k = inp.dataset.k;
+        if(k === "value")      state.slices[i].value = parseFloat(inp.value) || 0;
+        else if(k === "out")   state.slices[i].out = inp.checked;
+        else                   state.slices[i][k] = inp.value;
+        draw(); updateTotals(); autosave();
+      });
+    });
+
+    row.querySelector("[data-del]").addEventListener("click", function(){
+      state.slices.splice(i,1); renderSlices(); draw(); autosave();
+    });
+
+    row.addEventListener("dragstart", function(e){
+      e.dataTransfer.setData("text/plain", String(i));
+      e.dataTransfer.effectAllowed = "move";
+      row.classList.add("drag");
+    });
+    row.addEventListener("dragend", function(){ row.classList.remove("drag"); });
+    row.addEventListener("dragover", function(e){ e.preventDefault(); e.dataTransfer.dropEffect = "move"; });
+    row.addEventListener("drop", function(e){
+      e.preventDefault();
+      var from = parseInt(e.dataTransfer.getData("text/plain"), 10);
+      if(isNaN(from) || from === i) return;
+      var m = state.slices.splice(from,1)[0];
+      state.slices.splice(i, 0, m);
+      renderSlices(); draw(); autosave();
+    });
+
+    box.appendChild(row);
+  });
+  updateTotals();
+}
+
+function updateTotals(){
+  var total = state.slices.reduce(function(a,s){ return a + (+s.value || 0); }, 0);
+  $("#totalVal").textContent = fmtNum(total, 2);
+  var listBox = $("#slices");
+  if(!listBox) return;
+  var rows = listBox.children;
+  state.slices.forEach(function(s, i){
+    var el = rows[i] && rows[i].querySelector(".pct");
+    if(el) el.textContent = total ? ((+s.value||0)/total*100).toFixed(1) + "%" : "—";
+  });
+}
+
+/* ---------------- geometry ---------------- */
+function ringPath(cx,cy,R,r){
+  var c = 0.5522847498 * R, ci = 0.5522847498 * r;
+  var d = "M " + (cx-R) + " " + cy +
+    " C " + (cx-R) + " " + (cy-c) + " " + (cx-c) + " " + (cy-R) + " " + cx + " " + (cy-R) +
+    " C " + (cx+c) + " " + (cy-R) + " " + (cx+R) + " " + (cy-c) + " " + (cx+R) + " " + cy +
+    " C " + (cx+R) + " " + (cy+c) + " " + (cx+c) + " " + (cy+R) + " " + cx + " " + (cy+R) +
+    " C " + (cx-c) + " " + (cy+R) + " " + (cx-R) + " " + (cy+c) + " " + (cx-R) + " " + cy + " Z";
+  if(r > 0.5){
+    d += " M " + (cx-r) + " " + cy +
+      " C " + (cx-r) + " " + (cy+ci) + " " + (cx-ci) + " " + (cy+r) + " " + cx + " " + (cy+r) +
+      " C " + (cx+ci) + " " + (cy+r) + " " + (cx+r) + " " + (cy+ci) + " " + (cx+r) + " " + cy +
+      " C " + (cx+r) + " " + (cy-ci) + " " + (cx+ci) + " " + (cy-r) + " " + cx + " " + (cy-r) +
+      " C " + (cx-ci) + " " + (cy-r) + " " + (cx-r) + " " + (cy-ci) + " " + (cx-r) + " " + cy + " Z";
+  }
+  return d;
+}
+
+// Rounded annular / pie sector. a0->a1 in radians, dir = +1 cw, -1 ccw.
+function sectorPath(cx, cy, R, r, a0, a1, dir, round){
+  var f = function(n){ return n.toFixed(2); };
+  var sweepOuter = dir > 0 ? 1 : 0;
+  var sweepInner = dir > 0 ? 0 : 1;
+  var delta = Math.abs(a1 - a0);
+  var largeOuter = delta > Math.PI ? 1 : 0;
+
+  // Clamp rounding to the band width AND to the shortest arc of the slice.
+  // The inner arc is the tight one on a donut, so a thin sliver keeps its shape
+  // instead of being swallowed by its own corner radius.
+  var shortArc = delta * (r > 0.5 ? r : R);
+  var maxR = Math.min(round, (r > 0.5 ? (R - r) : R) / 2.2, shortArc / 3.2);
+  var rr = Math.max(0, maxR);
+
+  var P = function(rad, ang){ return polar(cx, cy, rad, ang); };
+
+  if(rr < 0.75){
+    var o0 = P(R, a0), o1 = P(R, a1);
+    if(r <= 0.5){
+      return "M " + f(cx) + " " + f(cy) + " L " + f(o0[0]) + " " + f(o0[1]) +
+        " A " + f(R) + " " + f(R) + " 0 " + largeOuter + " " + sweepOuter + " " + f(o1[0]) + " " + f(o1[1]) + " Z";
+    }
+    var i1 = P(r, a1), i0 = P(r, a0);
+    return "M " + f(o0[0]) + " " + f(o0[1]) +
+      " A " + f(R) + " " + f(R) + " 0 " + largeOuter + " " + sweepOuter + " " + f(o1[0]) + " " + f(o1[1]) +
+      " L " + f(i1[0]) + " " + f(i1[1]) +
+      " A " + f(r) + " " + f(r) + " 0 " + largeOuter + " " + sweepInner + " " + f(i0[0]) + " " + f(i0[1]) + " Z";
+  }
+
+  var dOut = (rr / R) * dir;
+  var aOut0 = a0 + dOut, aOut1 = a1 - dOut;
+  var largeO = Math.abs(aOut1 - aOut0) > Math.PI ? 1 : 0;
+
+  var cornerA0 = P(R - rr, a0), cornerA1 = P(R - rr, a1);
+  var arcS = P(R, aOut0), arcE = P(R, aOut1);
+  var tipS = P(R, a0), tipE = P(R, a1);
+
+  if(r <= 0.5){
+    return "M " + f(cx) + " " + f(cy) +
+      " L " + f(cornerA0[0]) + " " + f(cornerA0[1]) +
+      " Q " + f(tipS[0]) + " " + f(tipS[1]) + " " + f(arcS[0]) + " " + f(arcS[1]) +
+      " A " + f(R) + " " + f(R) + " 0 " + largeO + " " + sweepOuter + " " + f(arcE[0]) + " " + f(arcE[1]) +
+      " Q " + f(tipE[0]) + " " + f(tipE[1]) + " " + f(cornerA1[0]) + " " + f(cornerA1[1]) + " Z";
+  }
+
+  var dIn = (rr / r) * dir;
+  var half = (a1 - a0) / 2;
+  if(Math.abs(dIn) > Math.abs(half) * 0.9) dIn = half * 0.9;
+  var aIn0 = a0 + dIn, aIn1 = a1 - dIn;
+  var largeI = Math.abs(aIn1 - aIn0) > Math.PI ? 1 : 0;
+
+  var iArcE = P(r, aIn1), iArcS = P(r, aIn0);
+  var iTipE = P(r, a1),   iTipS = P(r, a0);
+  var iCornerE = P(r + rr, a1), iCornerS = P(r + rr, a0);
+
+  return "M " + f(cornerA0[0]) + " " + f(cornerA0[1]) +
+    " Q " + f(tipS[0]) + " " + f(tipS[1]) + " " + f(arcS[0]) + " " + f(arcS[1]) +
+    " A " + f(R) + " " + f(R) + " 0 " + largeO + " " + sweepOuter + " " + f(arcE[0]) + " " + f(arcE[1]) +
+    " Q " + f(tipE[0]) + " " + f(tipE[1]) + " " + f(cornerA1[0]) + " " + f(cornerA1[1]) +
+    " L " + f(iCornerE[0]) + " " + f(iCornerE[1]) +
+    " Q " + f(iTipE[0]) + " " + f(iTipE[1]) + " " + f(iArcE[0]) + " " + f(iArcE[1]) +
+    " A " + f(r) + " " + f(r) + " 0 " + largeI + " " + sweepInner + " " + f(iArcS[0]) + " " + f(iArcS[1]) +
+    " Q " + f(iTipS[0]) + " " + f(iTipS[1]) + " " + f(iCornerS[0]) + " " + f(iCornerS[1]) + " Z";
+}
+
+/* ---------------- labels ---------------- */
+function labelText(frac, s){
+  var S = state;
+  var pct = (frac * 100).toFixed(+S.decimals || 0) + "%";
+  var raw = S.prefix + fmtNum(+s.value) + S.suffix;
+  if(S.valMode === "pct")  return s.name + "\n" + pct;
+  if(S.valMode === "raw")  return s.name + "\n" + raw;
+  if(S.valMode === "both") return s.name + "\n" + raw + "  (" + pct + ")";
+  return s.name;
+}
+function textEl(txt, x, y, fs, fill, anchor, idx){
+  var lines = String(txt).split("\n");
+  var startDy = -((lines.length - 1) * fs * 1.2) / 2;
+  var tag = (!EXPORTING && idx !== undefined && idx > -1)
+    ? ' class="lbl" data-idx="' + idx + '"' : '';
+  var out = '<text' + tag + ' x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" text-anchor="' + anchor +
+            '" dominant-baseline="central" font-size="' + fs + '" fill="' + fill + '">';
+  lines.forEach(function(L, i){
+    out += '<tspan x="' + x.toFixed(1) + '" dy="' + (i === 0 ? startDy.toFixed(1) : (fs*1.2).toFixed(1)) + '"' +
+           (i === 0 ? ' font-weight="600"' : ' opacity="0.82"') + '>' + esc(L) + '</tspan>';
+  });
+  return out + "</text>";
+}
+
+/* ---------------- chart builder ---------------- */
+function buildSVG(){
+  var S = state;
+  var data = S.slices.filter(function(s){ return (+s.value || 0) > 0; });
+  var total = data.reduce(function(a,s){ return a + (+s.value || 0); }, 0);
+  var size = Math.max(240, +S.size || 640);
+  var legendOn = S.legend && data.length > 0;
+
+  var padT = (S.title ? 38 : 0) + (S.subtitle ? 22 : 0) + 18;
+  var legendCols = 2;
+  var legendRows = legendOn ? Math.ceil(data.length / legendCols) : 0;
+  var legendH = legendOn ? legendRows * 22 + 18 : 0;
+
+  // Callout labels sit outside the circle; widen the canvas to fit the longest
+  // one on each side instead of shrinking the pie into an unreadable disc.
+  var isCallout = (S.labelMode === "callout");
+  var sideRoom = 0;
+  if(isCallout && data.length){
+    var longest = 0;
+    data.forEach(function(s){
+      var pct = "  (100.0%)";
+      var line = String(s.name).length;
+      var val = (S.prefix + fmtNum(+s.value) + S.suffix).length + (S.valMode === "both" ? pct.length : 0);
+      longest = Math.max(longest, line, S.valMode === "nameonly" ? 0 : val);
+    });
+    // ~0.56em per character for the default UI font, plus the elbow run.
+    sideRoom = Math.ceil(longest * (+S.fontSize) * 0.56) + 48;
+    sideRoom = Math.min(sideRoom, size * 0.9);
+  }
+
+  var W = size + sideRoom * 2;
+  var H = size + padT + legendH;
+
+  var cx = W / 2, cy = padT + size / 2;
+  var R = Math.max(30, size/2 - 10 - (+S.explode || 0) * 0.7);
+  var rInner = R * ((+S.hole || 0) / 100);
+
+  var out = [];
+  out.push('<svg xmlns="http://www.w3.org/2000/svg"' +
+           (EXPORTING ? ' width="' + W + '" height="' + H + '"' : '') +
+           ' viewBox="0 0 ' + W + ' ' + H + '" font-family="Georgia, &apos;Times New Roman&apos;, serif">');
+  if(!S.transparent) out.push('<rect width="' + W + '" height="' + H + '" fill="' + S.bg + '"/>');
+
+  if(S.title)
+    out.push('<text x="' + (W/2) + '" y="34" text-anchor="middle" font-size="' +
+             Math.round(S.fontSize * 1.55) + '" font-weight="700" fill="' + S.fg + '">' + esc(S.title) + '</text>');
+  if(S.subtitle)
+    out.push('<text x="' + (W/2) + '" y="' + (S.title ? 58 : 34) + '" text-anchor="middle" font-size="' +
+             Math.round(S.fontSize * 1.02) + '" fill="' + S.fg + '" opacity="0.68">' + esc(S.subtitle) + '</text>');
+
+  if(!total){
+    out.push('<text x="' + (W/2) + '" y="' + cy + '" text-anchor="middle" font-size="16" fill="' + S.fg +
+             '" opacity="0.5">Add a slice with a value above 0</text></svg>');
+    return { svg: out.join(""), W: W, H: H };
+  }
+
+  var dir = (+S.dir === -1) ? -1 : 1;
+  var start0 = ((+S.start || 0) - 90) * Math.PI / 180;
+  var gap = (+S.pad || 0) * Math.PI / 180;
+  var segs = [];
+  var acc = start0;
+  data.forEach(function(s){
+    var frac = (+s.value) / total;
+    var sweep = frac * Math.PI * 2 * dir;
+    segs.push({ s:s, frac:frac, a0:acc, a1:acc + sweep, mid:acc + sweep/2 });
+    acc += sweep;
+  });
+
+  segs.forEach(function(g){
+    var full = Math.abs(g.a1 - g.a0) >= Math.PI * 2 - 1e-6;
+    var off = g.s.out ? (+S.explode || 0) : 0;
+    var ox = cx + Math.cos(g.mid) * off, oy = cy + Math.sin(g.mid) * off;
+    var d;
+    if(full){
+      d = ringPath(ox, oy, R, rInner);
+    } else {
+      var halfGap = Math.min(gap/2, Math.abs(g.a1 - g.a0) / 2 * 0.45) * dir;
+      d = sectorPath(ox, oy, R, rInner, g.a0 + halfGap, g.a1 - halfGap, dir, +S.round || 0);
+    }
+    var idx = S.slices.indexOf(g.s);
+    var sel = (!EXPORTING && idx === selected);
+    out.push('<path d="' + d + '" fill="' + g.s.color + '"' +
+      (S.stroke > 0 ? ' stroke="' + S.strokeCol + '" stroke-width="' + S.stroke + '" stroke-linejoin="miter"' : "") +
+      (EXPORTING ? "" : ' class="slice-path' + (sel ? " is-sel" : "") + '" data-idx="' + idx + '"') +
+      '/>');
+  });
+
+  // Interactive overlay: selection ring + draggable edge handles.
+  if(!EXPORTING && selected > -1){
+    var gSel = null;
+    segs.forEach(function(g){ if(S.slices.indexOf(g.s) === selected) gSel = g; });
+    if(gSel){
+      var offS = gSel.s.out ? (+S.explode || 0) : 0;
+      var sx = cx + Math.cos(gSel.mid) * offS, sy = cy + Math.sin(gSel.mid) * offS;
+      // handle on each boundary, at mid-band radius
+      var hr = rInner > 0 ? (rInner + R) / 2 : R * 0.62;
+      [[gSel.a0, "start"], [gSel.a1, "end"]].forEach(function(pair){
+        var p = polar(sx, sy, hr, pair[0]);
+        out.push('<circle class="edge-handle" data-edge="' + pair[1] + '" data-idx="' + selected +
+          '" cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="8" fill="#fff" stroke="' +
+          gSel.s.color + '" stroke-width="3"/>');
+      });
+    }
+  }
+
+  if(S.centerText && rInner > 24){
+    out.push('<text x="' + cx + '" y="' + cy + '" text-anchor="middle" dominant-baseline="central" font-size="' +
+      Math.round(Math.min(rInner * 0.42, S.fontSize * 1.9)) + '" font-weight="700" fill="' + S.fg + '">' +
+      esc(S.centerText) + '</text>');
+  }
+
+  if(S.labelMode !== "none"){
+    var minFrac = S.hideSmall ? ((+S.smallPct || 0) / 100) : 0;
+
+    if(S.labelMode === "inside"){
+      segs.forEach(function(g){
+        if(g.frac < minFrac) return;
+        var off = g.s.out ? (+S.explode || 0) : 0;
+        var rr = rInner > 0 ? (rInner + R) / 2 : R * 0.64;
+        var p = polar(cx + Math.cos(g.mid)*off, cy + Math.sin(g.mid)*off, rr, g.mid);
+        out.push(textEl(labelText(g.frac, g.s), p[0], p[1], +S.fontSize, contrast(g.s.color), "middle",
+                        S.slices.indexOf(g.s)));
+      });
+    } else {
+      var L = [], Rt = [];
+      segs.forEach(function(g){
+        if(g.frac < minFrac) return;
+        var off = g.s.out ? (+S.explode || 0) : 0;
+        var bx = cx + Math.cos(g.mid) * off, by = cy + Math.sin(g.mid) * off;
+        var p = polar(bx, by, R + 6, g.mid);
+        var item = { g:g, py:p[1], bx:bx, by:by, right: Math.cos(g.mid) >= 0 };
+        (item.right ? Rt : L).push(item);
+      });
+      var lh = (+S.fontSize) * 1.25;
+      var nLines = (S.valMode === "nameonly") ? 1 : 2;
+      var blockH = lh * nLines + 5;
+      var minY = padT + 6, maxY = padT + size - 6;
+
+      [L, Rt].forEach(function(arr){
+        arr.sort(function(a,b){ return a.py - b.py; });
+        for(var i = 1; i < arr.length; i++){
+          if(arr[i].py - arr[i-1].py < blockH) arr[i].py = arr[i-1].py + blockH;
+        }
+        if(arr.length){
+          var over = arr[arr.length-1].py - maxY;
+          if(over > 0) arr.forEach(function(a){ a.py -= over; });
+          if(arr[0].py < minY){
+            var d0 = minY - arr[0].py;
+            arr.forEach(function(a){ a.py += d0; });
+          }
+        }
+        arr.forEach(function(a){
+          var g = a.g;
+          var elbowX = a.right ? (cx + R + 24) : (cx - R - 24);
+          var endX   = a.right ? (elbowX + 14) : (elbowX - 14);
+          var sp = polar(a.bx, a.by, R + 2, g.mid);
+          out.push('<polyline points="' + sp[0].toFixed(1) + ',' + sp[1].toFixed(1) + ' ' +
+            elbowX.toFixed(1) + ',' + a.py.toFixed(1) + ' ' + endX.toFixed(1) + ',' + a.py.toFixed(1) +
+            '" fill="none" stroke="' + g.s.color + '" stroke-width="1.4" opacity="0.85"/>');
+          out.push('<circle cx="' + sp[0].toFixed(1) + '" cy="' + sp[1].toFixed(1) + '" r="2.2" fill="' + g.s.color + '"/>');
+          out.push(textEl(labelText(g.frac, g.s), a.right ? endX + 5 : endX - 5, a.py,
+                          +S.fontSize, S.fg, a.right ? "start" : "end", S.slices.indexOf(g.s)));
+        });
+      });
+    }
+  }
+
+  if(legendOn){
+    var y0 = padT + size + 12;
+    var colW = W / legendCols;
+    data.forEach(function(s, i){
+      var col = i % legendCols, row = Math.floor(i / legendCols);
+      var x = col * colW + 18, y = y0 + row * 22;
+      var pct = ((+s.value)/total*100).toFixed(+S.decimals || 0);
+      out.push('<rect x="' + x + '" y="' + y + '" width="12" height="12" fill="' + s.color + '"/>');
+      out.push('<text x="' + (x + 18) + '" y="' + (y + 10) + '" font-size="' +
+        Math.max(10, S.fontSize - 2) + '" fill="' + S.fg + '">' + esc(s.name) + " — " + pct + '%</text>');
+    });
+  }
+
+  out.push("</svg>");
+  GEO = { cx:cx, cy:cy, R:R, rInner:rInner, dir:dir, start0:start0, total:total, segs:segs,
+          W:W, H:H, legendY: padT + size + 12, legendOn: legendOn, legendH: legendH };
+  return { svg: out.join(""), W: W, H: H };
+}
+
+var lastSVG = "";
+function draw(){
+  var r = buildSVG();
+  lastSVG = r.svg;
+  var cb = $("#chartBox");
+  cb.style.setProperty("--chartW", r.W + "px");   // cap scaling at natural size
+  fitStage();
+  cb.innerHTML = r.svg;
+  wireChart();
+  renderInspector();
+  renderSliceTab();
+  placeLegendBtn();
+}
+
+// Anchor the legend toggle to the left of the chart, vertically centred on the
+// legend block. Positions are in CSS pixels, so account for SVG scaling.
+function placeLegendBtn(){
+  var btn = document.getElementById("legendBtn");
+  var svg = document.querySelector("#chartBox svg");
+  if(!btn || !svg || !GEO) return;
+
+  btn.textContent = state.legend ? "Hide legend" : "Show legend";
+
+  var vb = (svg.getAttribute("viewBox") || "").split(/\s+/);
+  var vbW = +vb[2] || 1, vbH = +vb[3] || 1;
+  var rect = svg.getBoundingClientRect();
+  var scale = rect.width / vbW;
+
+  var yMid;
+  if(GEO.legendOn){
+    // middle of the legend block
+    yMid = GEO.legendY + Math.max(0, (GEO.legendH - 18)) / 2;
+  } else {
+    // legend hidden: park it just below the chart body
+    yMid = vbH - 10;
+  }
+  btn.style.top = (yMid * scale) + "px";
+  btn.hidden = false;
+}
+window.addEventListener("resize", placeLegendBtn);
+
+/* ---------------- in-app messages ---------------- */
+// Replaces browser alert()/confirm() so nothing ever pops out of the page.
+function toast(msg, kind, ms){
+  var host = document.getElementById("toasts");
+  if(!host) return;
+  var el = document.createElement("div");
+  el.className = "toast" + (kind ? " " + kind : "");
+  el.textContent = msg;
+  host.appendChild(el);
+  setTimeout(function(){
+    el.style.transition = "opacity .25s";
+    el.style.opacity = "0";
+    setTimeout(function(){ if(el.parentNode) el.remove(); }, 250);
+  }, ms || 2600);
+}
+
+// Promise-based confirm rendered inside the page.
+function askConfirm(msg){
+  return new Promise(function(resolve){
+    var dlg = document.getElementById("confirmBox");
+    document.getElementById("confirmMsg").textContent = msg;
+    var yes = document.getElementById("confirmYes");
+    var no  = document.getElementById("confirmNo");
+    function cleanup(v){
+      yes.removeEventListener("click", onYes);
+      no.removeEventListener("click", onNo);
+      dlg.removeEventListener("cancel", onNo);
+      if(dlg.open) dlg.close();
+      resolve(v);
+    }
+    function onYes(){ cleanup(true); }
+    function onNo(e){ if(e) e.preventDefault(); cleanup(false); }
+    yes.addEventListener("click", onYes);
+    no.addEventListener("click", onNo);
+    dlg.addEventListener("cancel", onNo);
+    dlg.showModal();
+  });
+}
+
+// Inline prompt built on the same dialog, for naming things.
+function askText(msg, initial){
+  return new Promise(function(resolve){
+    var dlg = document.getElementById("confirmBox");
+    var host = document.getElementById("confirmMsg");
+    host.textContent = msg;
+    var inp = document.createElement("input");
+    inp.type = "text"; inp.value = initial || "";
+    inp.style.marginTop = "10px";
+    host.appendChild(inp);
+    var yes = document.getElementById("confirmYes");
+    var no  = document.getElementById("confirmNo");
+    function cleanup(v){
+      yes.removeEventListener("click", onYes);
+      no.removeEventListener("click", onNo);
+      dlg.removeEventListener("cancel", onNo);
+      inp.removeEventListener("keydown", onKey);
+      if(inp.parentNode) inp.remove();
+      if(dlg.open) dlg.close();
+      resolve(v);
+    }
+    function onYes(){ cleanup(inp.value.trim() || null); }
+    function onNo(e){ if(e) e.preventDefault(); cleanup(null); }
+    function onKey(e){ if(e.key === "Enter"){ e.preventDefault(); onYes(); } }
+    yes.addEventListener("click", onYes);
+    no.addEventListener("click", onNo);
+    dlg.addEventListener("cancel", onNo);
+    inp.addEventListener("keydown", onKey);
+    dlg.showModal();
+    inp.focus(); inp.select();
+  });
+}
+
+/* ---------------- direct manipulation ---------------- */
+var selected = -1;      // index into state.slices
+var EXPORTING = false;  // suppress editor chrome while rasterising
+var GEO = null;         // geometry from the last buildSVG()
+var drag = null;
+
+function selectSlice(i){
+  selected = i;
+  draw();
+}
+
+// Mouse position in SVG user units (handles CSS scaling of the <svg>).
+function svgPoint(evt){
+  var svg = $("#chartBox svg");
+  var rect = svg.getBoundingClientRect();
+  // On screen the SVG has no width/height attrs (so it can scale) — read the viewBox.
+  var vb = (svg.getAttribute("viewBox") || "").split(/\s+/);
+  var vbW = +vb[2] || rect.width, vbH = +vb[3] || rect.height;
+  return {
+    x: (evt.clientX - rect.left) * (vbW / rect.width),
+    y: (evt.clientY - rect.top)  * (vbH / rect.height)
+  };
+}
+
+// Angle of a point measured in the chart's own sweep direction, as a
+// 0..2PI offset from the first slice's start edge.
+function angleFrom(p){
+  var a = Math.atan2(p.y - GEO.cy, p.x - GEO.cx);
+  var rel = (a - GEO.start0) * GEO.dir;
+  rel = rel % (Math.PI * 2);
+  if(rel < 0) rel += Math.PI * 2;
+  return rel;
+}
+
+// Cumulative sweep (radians from start0) at the boundary before slice n.
+function cumAt(n){
+  var data = state.slices.filter(function(s){ return (+s.value||0) > 0; });
+  var t = data.reduce(function(a,s){ return a + (+s.value||0); }, 0) || 1;
+  var acc = 0;
+  for(var i = 0; i < n; i++) acc += (+data[i].value||0) / t;
+  return acc * Math.PI * 2;
+}
+
+/* ---------------- ribbon ---------------- */
+var activeTab = "home", userTab = "home";
+
+function showTab(name){
+  activeTab = name;
+  Array.prototype.forEach.call(document.querySelectorAll(".rb-tab"), function(t){
+    t.setAttribute("aria-selected", t.dataset.tab === name ? "true" : "false");
+  });
+  Array.prototype.forEach.call(document.querySelectorAll(".rb-panel"), function(p){
+    p.classList.toggle("on", p.dataset.panel === name);
+  });
+}
+
+function initRibbon(){
+  Array.prototype.forEach.call(document.querySelectorAll(".rb-tab"), function(t){
+    t.addEventListener("click", function(){
+      if(t.dataset.tab !== "slice") userTab = t.dataset.tab;
+      showTab(t.dataset.tab);
+    });
+  });
+  showTab("home");
+}
+
+// Contextual "Slice Tools" tab — appears only while a slice is selected.
+function renderSliceTab(){
+  var tab = $("#tabSlice"), panel = $("#panelSlice");
+  if(!tab || !panel) return;
+
+  if(selected < 0 || !state.slices[selected]){
+    tab.hidden = true;
+    panel.innerHTML = "";
+    if(activeTab === "slice") showTab(userTab);
+    return;
+  }
+
+  var s = state.slices[selected];
+  var total = state.slices.reduce(function(a,x){ return a + (+x.value||0); }, 0) || 1;
+  var pal = PALETTES[state.palette] || PALETTES.Studio;
+  var wasHidden = tab.hidden;
+  tab.hidden = false;
+
+  panel.innerHTML =
+    '<div class="rb-group">' +
+      '<div class="rb-items"><div class="rb-col">' +
+        '<div class="rb-f">Name <input type="text" class="txt" id="sfName" value="' + escAttr(s.name) + '"></div>' +
+        '<div class="rb-f">Value <input type="number" class="num" id="sfVal" value="' + s.value + '" step="any">' +
+          '<b style="color:var(--text)">' + ((+s.value||0)/total*100).toFixed(1) + '%</b></div>' +
+      '</div></div><div class="rb-group-label">Selected slice</div>' +
+    '</div>' +
+    '<div class="rb-group">' +
+      '<div class="rb-items">' +
+        '<div class="rb-col">' +
+          '<div class="rb-f">Fill <input type="color" id="sfColor" value="' + s.color + '"></div>' +
+          '<div class="rb-sw" id="sfSw">' + pal.map(function(c){
+              return '<i data-c="' + c + '" style="background:' + c + '"></i>'; }).join("") + '</div>' +
+        '</div>' +
+      '</div><div class="rb-group-label">Slice color</div>' +
+    '</div>' +
+    '<div class="rb-group">' +
+      '<div class="rb-items"><div class="rb-col">' +
+        '<div class="rb-f">Width <input type="range" id="sfStroke" min="0" max="10" step="0.5" value="' +
+          state.stroke + '"><span class="pct">' + (+state.stroke).toFixed(1) + 'px</span></div>' +
+        '<div class="rb-f">Color <input type="color" id="sfStrokeCol" value="' + state.strokeCol + '"></div>' +
+      '</div></div><div class="rb-group-label">Contour</div>' +
+    '</div>' +
+    '<div class="rb-group">' +
+      '<div class="rb-items">' +
+        '<button class="rb-big' + (s.out ? " on" : "") + '" id="sfOut"><b>&#8599;</b>Pull out</button>' +
+        '<div class="rb-col"><div class="rb-f">Distance <input type="range" id="sfExplode" min="6" max="40" value="' +
+          Math.max(6, +state.explode||14) + '"><span class="pct">' + (+state.explode||0) + 'px</span></div></div>' +
+      '</div><div class="rb-group-label">Position</div>' +
+    '</div>' +
+    '<div class="rb-group">' +
+      '<div class="rb-items">' +
+        '<button class="rb-big" id="sfDup"><b>&#10697;</b>Duplicate</button>' +
+        '<button class="rb-big" id="sfDel"><b>&#128465;</b>Delete</button>' +
+      '</div><div class="rb-group-label">Arrange</div>' +
+    '</div>';
+
+  // Redraw the chart only (never the ribbon) so focus/caret survive typing.
+  function chartOnly(){
+    var r = buildSVG(); lastSVG = r.svg;
+    $("#chartBox").innerHTML = r.svg; wireChart();
+    renderInspector(); updateTotals(); autosave();
+  }
+
+  $("#sfName").addEventListener("input", function(){ s.name = this.value; chartOnly(); });
+  $("#sfVal").addEventListener("input", function(){ s.value = parseFloat(this.value)||0; chartOnly(); });
+  $("#sfColor").addEventListener("input", function(){ s.color = this.value; chartOnly(); });
+  Array.prototype.forEach.call(panel.querySelectorAll("#sfSw i"), function(sw){
+    sw.addEventListener("click", function(){
+      s.color = sw.dataset.c;
+      $("#sfColor").value = sw.dataset.c;
+      chartOnly();
+    });
+  });
+  $("#sfStroke").addEventListener("input", function(){
+    state.stroke = parseFloat(this.value);
+    this.nextElementSibling.textContent = (+state.stroke).toFixed(1) + "px";
+    var sv = $("#stroke"); if(sv) sv.value = state.stroke;
+    syncRangeLabels(); chartOnly();
+  });
+  $("#sfStrokeCol").addEventListener("input", function(){
+    state.strokeCol = this.value;
+    var sc = $("#strokeCol"); if(sc) sc.value = this.value;
+    chartOnly();
+  });
+  $("#sfOut").addEventListener("click", function(){
+    s.out = !s.out;
+    if(s.out && (+state.explode||0) < 6) state.explode = 14;
+    draw(); autosave();
+  });
+  $("#sfExplode").addEventListener("input", function(){
+    state.explode = parseFloat(this.value);
+    this.nextElementSibling.textContent = state.explode + "px";
+    var ex = $("#explode"); if(ex) ex.value = state.explode;
+    if(!s.out){ s.out = true; draw(); autosave(); return; }
+    syncRangeLabels(); chartOnly();
+  });
+  $("#sfDup").addEventListener("click", function(){
+    state.slices.splice(selected+1, 0, {name:s.name+" copy", value:s.value, color:s.color, out:false});
+    selectSlice(selected+1); autosave();
+  });
+  $("#sfDel").addEventListener("click", function(){
+    state.slices.splice(selected,1);
+    selected = -1; draw(); updateTotals(); autosave();
+  });
+
+  if(wasHidden) showTab("slice");   // jump to the tools the moment a slice is picked
+}
+
+function renderInspector(){
+  // The under-chart status bar was removed; Slice Tools in the ribbon covers it.
+}
+
+// Floating input positioned over a chart label, for in-place renaming.
+function editLabel(idx, node){
+  if(idx < 0 || !state.slices[idx]) return;
+  var old = document.getElementById("lblEdit");
+  if(old) old.remove();
+
+  selectSlice(idx);
+  // selectSlice redraws, so re-find the label node for its fresh position.
+  var fresh = $("#chartBox").querySelector('.lbl[data-idx="' + idx + '"]') || node;
+  var r = fresh.getBoundingClientRect();
+
+  var inp = document.createElement("input");
+  inp.id = "lblEdit";
+  inp.type = "text";
+  inp.value = state.slices[idx].name;
+  inp.style.left = (window.scrollX + r.left - 4) + "px";
+  inp.style.top  = (window.scrollY + r.top + r.height/2 - 15) + "px";
+  inp.style.width = Math.max(90, r.width + 24) + "px";
+  document.body.appendChild(inp);
+  inp.focus(); inp.select();
+
+  var done = function(commit){
+    if(!inp.parentNode) return;
+    if(commit && inp.value.trim()){
+      state.slices[idx].name = inp.value.trim();
+      autosave();
+    }
+    inp.remove();
+    draw();
+  };
+  inp.addEventListener("keydown", function(ev){
+    if(ev.key === "Enter"){ ev.preventDefault(); done(true); }
+    else if(ev.key === "Escape"){ ev.preventDefault(); done(false); }
+  });
+  inp.addEventListener("blur", function(){ done(true); });
+}
+
+// Delete / Backspace removes the selected slice — but never while the user is
+// typing in a field, or an inline label editor is open.
+document.addEventListener("keydown", function(e){
+  if(e.key !== "Delete" && e.key !== "Backspace") return;
+  if(selected < 0 || !state.slices[selected]) return;
+
+  var t = e.target;
+  var tag = t && t.tagName;
+  if(tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) return;
+  if(document.getElementById("lblEdit")) return;
+  if(document.querySelector("dialog[open]")) return;
+
+  e.preventDefault();
+  state.slices.splice(selected, 1);
+  selected = -1;
+  draw(); updateTotals(); autosave();
+});
+
+// Keep the chart inside the viewport so the page never needs a scrollbar.
+function fitStage(){
+  var rb = document.getElementById("ribbon");   // header is part of the ribbon now
+  var chrome = rb ? rb.offsetHeight : 0;
+  document.documentElement.style.setProperty("--chromeH", chrome + "px");
+  var cb = $("#chartBox");
+  if(cb) cb.style.setProperty("--chartMaxH", Math.max(160, window.innerHeight - chrome - 34) + "px");
+}
+window.addEventListener("resize", fitStage);
+
+function wireChart(){
+  var svg = $("#chartBox svg");
+  if(!svg) return;
+
+  svg.addEventListener("mousedown", function(e){
+    if(e.target.closest(".lbl")) return;   // labels are click-to-rename, not drag
+    var handle = e.target.closest(".edge-handle");
+    var path = e.target.closest(".slice-path");
+
+    if(handle){
+      // Resize: dragging a boundary moves value between two adjacent slices,
+      // keeping the total fixed so the rest of the chart stays put.
+      var vis = state.slices.filter(function(s){ return (+s.value||0) > 0; });
+      var vi = vis.indexOf(state.slices[+handle.dataset.idx]);
+      var edge = handle.dataset.edge;
+      var aIdx = (edge === "start") ? vi - 1 : vi;      // slice losing/gaining on the left
+      var bIdx = (edge === "start") ? vi : vi + 1;      // ...on the right
+      if(aIdx < 0 || bIdx >= vis.length) return;        // outer edges of the ring aren't shared
+      drag = {
+        type:"resize",
+        a: vis[aIdx], b: vis[bIdx],
+        sum: (+vis[aIdx].value||0) + (+vis[bIdx].value||0),
+        total: vis.reduce(function(x,s){ return x + (+s.value||0); }, 0),
+        boundary: cumAt(aIdx)   // sweep at the *left* edge of slice a
+      };
+      e.preventDefault();
+      return;
+    }
+
+    if(path){
+      var idx = +path.dataset.idx;
+      selectSlice(idx);
+      drag = { type:"maybe-explode", idx:idx, x:e.clientX, y:e.clientY, moved:false };
+      e.preventDefault();
+      return;
+    }
+
+    // click on empty canvas clears selection
+    selectSlice(-1);
+  });
+
+  // Click a label on the chart to rename that slice in place.
+  svg.addEventListener("click", function(e){
+    var lbl = e.target.closest(".lbl");
+    if(lbl) editLabel(+lbl.dataset.idx, lbl);
+  });
+
+  svg.addEventListener("dblclick", function(e){
+    var path = e.target.closest(".slice-path");
+    if(!path) return;
+    var i = +path.dataset.idx;
+    askText("Slice name:", state.slices[i].name).then(function(name){
+      if(name){ state.slices[i].name = name; draw(); autosave(); }
+    });
+  });
+
+  svg.addEventListener("mousemove", function(e){
+    var overHandle = e.target.closest(".edge-handle");
+    var overPath = e.target.closest(".slice-path");
+    svg.style.cursor = overHandle ? "ew-resize" : (overPath ? "pointer" : "default");
+  });
+}
+
+document.addEventListener("mousemove", function(e){
+  if(!drag || !GEO) return;
+
+  if(drag.type === "maybe-explode"){
+    if(Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 6){
+      drag.type = "explode"; drag.moved = true;
+    } else return;
+  }
+
+  if(drag.type === "explode"){
+    var p = svgPoint(e);
+    var s = state.slices[drag.idx];
+    var seg = null;
+    GEO.segs.forEach(function(g){ if(g.s === s) seg = g; });
+    if(!seg) return;
+    // project cursor onto the slice's mid-angle to get pull-out distance
+    var dx = p.x - GEO.cx, dy = p.y - GEO.cy;
+    var dist = dx * Math.cos(seg.mid) + dy * Math.sin(seg.mid);
+    var pull = Math.max(0, dist - GEO.R * 0.55);
+    s.out = pull > 6;
+    if(s.out) state.explode = Math.round(Math.min(40, Math.max(6, pull)));
+    draw();
+    return;
+  }
+
+  if(drag.type === "resize"){
+    var rel = angleFrom(svgPoint(e));
+    var frac = (rel - drag.boundary) / (Math.PI * 2);      // share taken by slice a
+    var maxFrac = drag.sum / drag.total;
+    frac = Math.max(maxFrac * 0.02, Math.min(maxFrac * 0.98, frac));
+    var aVal = frac * drag.total;
+    drag.a.value = Math.round(aVal * 100) / 100;
+    drag.b.value = Math.round((drag.sum - aVal) * 100) / 100;
+    draw(); updateTotals();
+  }
+});
+
+document.addEventListener("mouseup", function(){
+  if(drag){
+    if(drag.type === "resize" || drag.type === "explode"){ renderSlices(); autosave(); }
+    drag = null;
+  }
+});
+
+/* ---------------- export ---------------- */
+function downloadBlob(blob, name){
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 3000);
+}
+function fileBase(){
+  var b = (state.title || "pie-chart").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-").toLowerCase();
+  return b || "pie-chart";
+}
+// Rebuild without selection rings / handles so exports stay clean.
+function cleanSVG(){
+  EXPORTING = true;
+  var r = buildSVG();
+  EXPORTING = false;
+  buildSVG();           // restore GEO for the on-screen (interactive) chart
+  return r;
+}
+function exportSVG(){
+  downloadBlob(new Blob([cleanSVG().svg], {type:"image/svg+xml;charset=utf-8"}), fileBase() + ".svg");
+}
+function exportPNG(scale){
+  var r = cleanSVG(), s = scale || 2;
+  var img = new Image();
+  img.onload = function(){
+    var cv = document.createElement("canvas");
+    cv.width = Math.round(r.W * s);
+    cv.height = Math.round(r.H * s);
+    var ctx = cv.getContext("2d");
+    ctx.setTransform(s, 0, 0, s, 0, 0);
+    ctx.drawImage(img, 0, 0);
+    cv.toBlob(function(b){ downloadBlob(b, fileBase() + ".png"); }, "image/png");
+  };
+  img.onerror = function(){ toast("PNG export failed — use the SVG button instead.", "err"); };
+  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(r.svg);
+}
+
+/* ---------------- data import ---------------- */
+function parseData(text){
+  var rows = [];
+  String(text || "").split(/\r?\n/).forEach(function(line){
+    var t = line.trim();
+    if(!t) return;
+
+    // Pull the trailing number off first, so thousands separators inside the
+    // value ("$1,250.50") are never mistaken for the name/value delimiter.
+    var m = t.match(/^(.*?)[\s,;:\t]*([-+]?[\d][\d.,\s']*)\s*([%$€£]|RON|USD|EUR|GBP)?$/i);
+    if(!m) return;
+    var name = m[1];
+    var valRaw = m[2];
+    if(!name || !valRaw) return;
+
+    // Decide which separator is the decimal point: the last one present, but
+    // only if it is followed by 1-2 digits (1,234.56 / 1.234,56 / 1,5).
+    valRaw = valRaw.replace(/[\s']/g, "");
+    var lastDot = valRaw.lastIndexOf("."), lastCom = valRaw.lastIndexOf(",");
+    var decPos = Math.max(lastDot, lastCom);
+    if(decPos > -1 && /^\d{1,2}$/.test(valRaw.slice(decPos + 1))){
+      valRaw = valRaw.slice(0, decPos).replace(/[.,]/g, "") + "." + valRaw.slice(decPos + 1);
+    } else {
+      valRaw = valRaw.replace(/[.,]/g, "");
+    }
+    var v = parseFloat(valRaw);
+    name = name.trim()
+      .replace(/^["']|["']$/g, "")
+      .replace(/[$€£]\s*$/, "")     // currency symbol left in front of the value
+      .replace(/[,;:\t]+\s*$/, "")  // then any delimiter it was hiding
+      .trim();
+    if(!name || !isFinite(v)) return;
+    rows.push({ name:name, value:v });
+  });
+  return rows;
+}
+function applyRows(rows, mode){
+  if(!rows.length){ toast("Couldn't find any 'Name, Value' rows in that text.", "err"); return false; }
+  if(mode === "replace") state.slices = [];
+  var base = state.slices.length;
+  rows.forEach(function(r, i){
+    state.slices.push({ name:r.name, value:r.value, color: nextColor(base + i), out:false });
+  });
+  renderSlices(); draw(); autosave();
+  return true;
+}
+
+/* ---------------- UI wiring ---------------- */
+function syncRangeLabels(){
+  $("#holeV").textContent    = state.hole + "%";
+  $("#padV").textContent     = (+state.pad).toFixed(1) + "°";
+  $("#startV").textContent   = state.start + "°";
+  $("#strokeV").textContent  = (+state.stroke).toFixed(1) + "px";
+  $("#explodeV").textContent = state.explode + "px";
+}
+function bind(id, key, kind){
+  var el = $("#" + id);
+  if(!el) return;
+  var ev = (el.type === "checkbox" || el.tagName === "SELECT") ? "change" : "input";
+  el.addEventListener(ev, function(){
+    if(kind === "bool")     state[key] = el.checked;
+    else if(kind === "num") state[key] = parseFloat(el.value);
+    else                    state[key] = el.value;
+    syncRangeLabels(); draw(); autosave();
+    if(key === "decimals") updateTotals();
+  });
+}
+function renderPaletteUI(){
+  var sel = $("#palette");
+  sel.innerHTML = Object.keys(PALETTES).map(function(k){
+    return '<option' + (k === state.palette ? " selected" : "") + ">" + k + "</option>";
+  }).join("");
+  // Grid preview of the active palette; clicking a color recolors the
+  // selected slice, matching the Slice Tools swatches.
+  var sw = $("#swatches");
+  sw.innerHTML = (PALETTES[state.palette] || PALETTES.Studio).map(function(c){
+    return '<i data-c="' + c + '" title="' + c + '" style="background:' + c + '"></i>';
+  }).join("");
+  Array.prototype.forEach.call(sw.querySelectorAll("i"), function(i){
+    i.addEventListener("click", function(){
+      if(selected < 0 || !state.slices[selected]){
+        toast("Pick a slice on the chart first, then click a color.");
+        return;
+      }
+      state.slices[selected].color = i.dataset.c;
+      draw(); autosave();
+    });
+  });
+}
+function applyPalette(shuffled){
+  var pal = PALETTES[state.palette] || PALETTES.Studio;
+  var order = state.slices.map(function(_, i){ return i; });
+  if(shuffled){
+    for(var i = order.length - 1; i > 0; i--){        // Fisher-Yates
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = order[i]; order[i] = order[j]; order[j] = t;
+    }
+  }
+  order.forEach(function(sliceIdx, n){ state.slices[sliceIdx].color = pal[n % pal.length]; });
+  renderSlices(); draw(); autosave();
+}
+function refreshAll(){
+  ["title","subtitle","centerText","prefix","suffix","hole","pad","start","size","decimals",
+   "fontSize","stroke","explode","smallPct","dir","labelMode","valMode","bg","fg","strokeCol"].forEach(function(k){
+    var el = $("#" + k); if(el) el.value = state[k];
+  });
+  ["legend","hideSmall","transparent"].forEach(function(k){
+    var el = $("#" + k); if(el) el.checked = !!state[k];
+  });
+  var bgh = $("#bgHex"); if(bgh) bgh.value = state.bg;
+  var fgh = $("#fgHex"); if(fgh) fgh.value = state.fg;
+  $("#palette").value = state.palette;
+  syncRangeLabels(); renderSlices(); draw(); autosave();
+}
+
+function openPresets(){
+  var all = {};
+  try { all = JSON.parse(localStorage.getItem(LS_PRESETS) || "{}"); } catch(e){}
+  var list = $("#presetList");
+  var keys = Object.keys(all);
+  list.innerHTML = keys.length ? "" : '<p class="hint">No saved charts yet.</p>';
+  keys.forEach(function(k){
+    var row = document.createElement("div");
+    row.className = "row";
+    row.style.marginBottom = "6px";
+    row.innerHTML = '<b style="flex:1">' + esc(k) + '</b><button data-l>Load</button><button data-d class="ghost">Delete</button>';
+    row.querySelector("[data-l]").onclick = function(){
+      var loaded = JSON.parse(JSON.stringify(all[k]));
+      for(var kk in DEFAULTS) if(!(kk in loaded)) loaded[kk] = DEFAULTS[kk];
+      state = loaded;
+      refreshAll();
+      $("#dlgPresets").close();
+    };
+    row.querySelector("[data-d]").onclick = function(){
+      delete all[k];
+      localStorage.setItem(LS_PRESETS, JSON.stringify(all));
+      openPresets();
+    };
+    list.appendChild(row);
+  });
+  $("#dlgPresets").showModal();
+}
+
+function initEvents(){
+  ["title","subtitle","centerText","prefix","suffix","labelMode","valMode","bg","fg","strokeCol"]
+    .forEach(function(k){ bind(k, k, "str"); });
+  ["hole","pad","start","size","decimals","fontSize","stroke","explode","smallPct","dir"]
+    .forEach(function(k){ bind(k, k, "num"); });
+  ["legend","hideSmall","transparent"].forEach(function(k){ bind(k, k, "bool"); });
+
+  [["bg","bgHex"],["fg","fgHex"]].forEach(function(pair){
+    var colorId = pair[0], hexId = pair[1];
+    if(!$("#" + hexId)) return;   // hex text field trimmed from the ribbon
+    $("#" + colorId).addEventListener("input", function(){ $("#" + hexId).value = $("#" + colorId).value; });
+    $("#" + hexId).addEventListener("input", function(){
+      var v = $("#" + hexId).value.trim();
+      if(/^#[0-9a-fA-F]{6}$/.test(v)){
+        state[colorId] = v;
+        $("#" + colorId).value = v;
+        draw(); autosave();
+      }
+    });
+  });
+
+  $("#palette").addEventListener("change", function(){
+    state.palette = $("#palette").value;
+    renderPaletteUI(); renderSliceTab(); autosave();
+  });
+  $("#legendBtn").addEventListener("click", function(){
+    state.legend = !state.legend;
+    var cb = $("#legend"); if(cb) cb.checked = state.legend;
+    draw(); autosave();
+  });
+  $("#btnApplyPal").addEventListener("click", function(){
+    if(!state.slices.length){ toast("No slices to color yet.", "err"); return; }
+    applyPalette(false);
+    toast("Palette applied.", "ok");
+  });
+  $("#btnShuffle").addEventListener("click", function(){
+    if(state.slices.length < 2){ toast("Need at least two slices to shuffle.", "err"); return; }
+    applyPalette(true);
+    toast("Colors shuffled.", "ok");
+  });
+  $("#btnReset").addEventListener("click", function(){
+    askConfirm("Reset all chart options to their defaults? Your slices are kept.").then(function(ok){
+      if(!ok) return;
+      var keep = state.slices;
+      state = JSON.parse(JSON.stringify(DEFAULTS));
+      state.slices = keep;
+      selected = -1;
+      renderPaletteUI(); refreshAll();
+      toast("Options reset to defaults.", "ok");
+    });
+  });
+
+  $("#btnAdd").addEventListener("click", function(){
+    state.slices.push({ name:"Slice " + (state.slices.length + 1), value:10,
+                        color: nextColor(state.slices.length), out:false });
+    renderSlices(); draw(); autosave();
+  });
+  var bc = $("#btnClear");
+  if(bc) bc.addEventListener("click", function(){
+    askConfirm("Remove all slices?").then(function(ok){
+      if(!ok) return;
+      state.slices = []; selected = -1; renderSlices(); draw(); updateTotals(); autosave();
+      toast("All slices removed.", "ok");
+    });
+  });
+
+  $("#btnPng").addEventListener("click", function(){ exportPNG(2); });
+  $("#btnSvg").addEventListener("click", exportSVG);
+  $("#btnTheme").addEventListener("click", function(){
+    var cur = document.documentElement.getAttribute("data-theme");
+    var next = (cur === "light") ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", next);
+    localStorage.setItem("pcs_theme", next);
+  });
+
+  var dlg = $("#dlgData");
+  $("#btnData").addEventListener("click", function(){ dlg.showModal(); });
+  $("#dlgCancel").addEventListener("click", function(){ dlg.close(); });
+  Array.prototype.forEach.call(document.querySelectorAll(".tabs button"), function(b){
+    b.addEventListener("click", function(){
+      Array.prototype.forEach.call(document.querySelectorAll(".tabs button"), function(x){
+        x.setAttribute("aria-selected", x === b ? "true" : "false");
+      });
+      $("#tab-paste").hidden = (b.dataset.tab !== "paste");
+      $("#tab-file").hidden  = (b.dataset.tab !== "file");
+    });
+  });
+
+  var pendingFileText = "";
+  $("#fileIn").addEventListener("change", function(e){
+    var f = e.target.files[0];
+    if(!f) return;
+    var rd = new FileReader();
+    rd.onload = function(){
+      pendingFileText = rd.result;
+      $("#fileStatus").textContent = "Loaded " + f.name + " — " + parseData(pendingFileText).length + " rows found.";
+    };
+    rd.readAsText(f);
+  });
+
+  function doImport(mode){
+    var txt = $("#tab-file").hidden ? $("#pasteBox").value : pendingFileText;
+    if(applyRows(parseData(txt), mode)) dlg.close();
+  }
+  $("#dlgReplace").addEventListener("click", function(){ doImport("replace"); });
+  $("#dlgAppend").addEventListener("click", function(){ doImport("append"); });
+
+  $("#btnSave").addEventListener("click", function(){
+    askText("Name this chart:", state.title || "My chart").then(function(name){
+      if(!name) return;
+      var all = {};
+      try { all = JSON.parse(localStorage.getItem(LS_PRESETS) || "{}"); } catch(e){}
+      all[name] = JSON.parse(JSON.stringify(state));
+      localStorage.setItem(LS_PRESETS, JSON.stringify(all));
+      toast("Saved: " + name, "ok");
+    });
+  });
+  $("#btnLoad").addEventListener("click", openPresets);
+  $("#presetClose").addEventListener("click", function(){ $("#dlgPresets").close(); });
+}
+
+(function init(){
+  var th = localStorage.getItem("pcs_theme");
+  if(th) document.documentElement.setAttribute("data-theme", th);
+  if(!autoload()) state.slices = JSON.parse(JSON.stringify(DEFAULT_SLICES));
+  renderPaletteUI();
+  initRibbon();
+  initEvents();
+  refreshAll();
+})();
+</script>
+</body>
+</html>
