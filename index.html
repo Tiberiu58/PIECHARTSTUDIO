@@ -35,10 +35,23 @@
 }
 *{box-sizing:border-box}
 html,body{max-width:100%;overflow-x:hidden}
+body.reading{overflow-y:auto}
 body{margin:0;font:14px/1.5 Georgia,"Times New Roman","Nimbus Roman",serif;background:var(--bg);color:var(--text)}
 .rb-top{display:flex;align-items:center;gap:8px;padding:5px 10px;background:var(--panel);
   border-bottom:1px solid var(--line);flex-wrap:nowrap;min-width:0}
 .rb-top h1{font-size:14px;margin:0 6px 0 0;font-weight:650;letter-spacing:.2px;white-space:nowrap;flex:none}
+.brand{position:relative;flex:none}
+.brand>button{display:flex;align-items:center;gap:6px;background:none;border:1px solid transparent;
+  font:inherit;font-size:14px;font-weight:650;color:var(--text);cursor:pointer;padding:4px 8px}
+.brand>button:hover{border-color:var(--line);background:var(--panel2)}
+.brand .caret{font-size:9px;color:var(--muted)}
+.brand-menu{position:absolute;top:calc(100% + 4px);left:0;z-index:120;min-width:190px;
+  background:var(--panel);border:1px solid var(--line);box-shadow:0 8px 26px rgba(0,0,0,.35);padding:4px}
+.brand-menu[hidden]{display:none}
+.brand-menu a{display:block;padding:7px 12px;font-size:13px;color:var(--text);text-decoration:none;cursor:pointer}
+.brand-menu a:hover{background:var(--panel2)}
+.brand-menu a[aria-current=true]{color:var(--accent);font-weight:650}
+.brand-menu .mi-sub{display:block;font-size:11px;color:var(--muted);font-weight:400}
 .rb-top .spacer{flex:1;min-width:6px}
 .rb-top button{flex:none}
 .wrap{}
@@ -143,6 +156,28 @@ button.icon{padding:4px 8px;line-height:1}
 .rb-sw i{width:14px;height:14px;border-radius:0;cursor:pointer;border:1px solid var(--line);display:block}
 .rb-sw i:hover{outline:2px solid var(--accent);outline-offset:1px}
 .rb-empty{color:var(--muted);font-size:12.5px;padding:8px 12px}
+/* Content pages (How To / FAQ) */
+.page{display:none;line-height:1.62}
+.page.on{display:block;max-width:780px;margin:0 auto;padding:30px 24px 70px}
+.page h2{font-size:26px;margin:0 0 6px;font-weight:700}
+.page .lede{color:var(--muted);margin:0 0 24px;font-size:15px}
+.page h3{font-size:17px;margin:26px 0 6px;font-weight:650}
+.page p{margin:0 0 12px}
+.page ol,.page ul{margin:0 0 12px;padding-left:22px}
+.page li{margin:0 0 7px}
+.page kbd{background:var(--panel2);border:1px solid var(--line);padding:1px 6px;font-size:12px;
+  font-family:ui-monospace,Consolas,monospace}
+.page .q{font-weight:650;margin:22px 0 4px;font-size:15.5px}
+.page .back{display:inline-block;margin-top:26px;padding:8px 16px;border:1px solid var(--line);
+  background:var(--panel);color:var(--text);cursor:pointer;font:inherit;font-size:13.5px}
+.page .back:hover{border-color:var(--accent)}
+#dlgHistory{max-width:560px}
+#histList{max-height:420px;overflow-y:auto}
+.hist-row{display:flex;align-items:center;gap:8px;padding:9px 4px;border-bottom:1px solid var(--line)}
+.hist-row:last-child{border-bottom:none}
+.hist-main{flex:1;min-width:0}
+.hist-main b{display:block;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hist-sub{display:block;font-size:11.5px;color:var(--muted)}
 /* In-app messages replace browser alert()/confirm() dialogs. */
 #toasts{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:200;
   display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
@@ -172,7 +207,14 @@ code{background:var(--panel2);padding:1px 4px;border-radius:0}
 <body>
 <div id="ribbon">
   <div class="rb-top">
-    <h1>Pie Chart Studio</h1>
+    <div class="brand">
+      <button id="brandBtn" aria-haspopup="true" aria-expanded="false">Pie Chart Studio <span class="caret">&#9660;</span></button>
+      <div class="brand-menu" id="brandMenu" hidden>
+        <a data-page="studio">Studio<span class="mi-sub">Build your chart</span></a>
+        <a data-page="howto">How To<span class="mi-sub">Step-by-step guide</span></a>
+        <a data-page="faq">FAQ<span class="mi-sub">Common questions</span></a>
+      </div>
+    </div>
     <div class="rb-tabs" id="rbTabs">
       <button class="rb-tab" data-tab="home" aria-selected="true">Home</button>
       <button class="rb-tab" data-tab="design">Design</button>
@@ -219,6 +261,7 @@ code{background:var(--panel2);padding:1px 4px;border-radius:0}
         <div class="rb-items">
           <button class="rb-big" id="btnSave"><b>&#128190;</b>Save</button>
           <button class="rb-big" id="btnLoad"><b>&#128194;</b>Load</button>
+          <button class="rb-big" id="btnHistory" title="Charts you have worked on"><b>&#128337;</b>History</button>
         </div>
         <div class="rb-group-label">Charts</div>
       </div>
@@ -304,6 +347,90 @@ code{background:var(--panel2);padding:1px 4px;border-radius:0}
   </div>
 </div>
 
+<article class="page" id="page-howto">
+  <h2>How to make a pie chart</h2>
+  <p class="lede">Pie Chart Studio runs entirely in your browser. Nothing is uploaded, there is no account, and your work is saved locally as you go.</p>
+
+  <h3>1. Enter your data</h3>
+  <p>Click <strong>Import / Paste data</strong> and paste one slice per line as <code>Name, Value</code>. You can copy straight out of Excel or Google Sheets:</p>
+  <ul>
+    <li>Commas, tabs, semicolons and colons all work as separators.</li>
+    <li>Values can be money, percentages, shares or plain numbers &mdash; keep every row in the same unit.</li>
+    <li>Both <code>1,250.50</code> and <code>12.500,75</code> number formats are read correctly.</li>
+  </ul>
+  <p>You can also load a <code>.csv</code> file, or skip the import and press <strong>+ Add slice</strong> to build the chart by hand.</p>
+
+  <h3>2. Edit directly on the chart</h3>
+  <p>The chart itself is the editor. There is no long list of form fields to hunt through:</p>
+  <ul>
+    <li><strong>Click a slice</strong> to select it. A contextual <em>Slice Tools</em> tab appears with its name, value, colour, border and position.</li>
+    <li><strong>Drag a slice edge</strong> to resize it. Value moves between the two neighbouring slices, so the total stays fixed and your percentages keep their meaning.</li>
+    <li><strong>Drag a slice outward</strong> to pull it out of the pie for emphasis.</li>
+    <li><strong>Click a label</strong> to rename it in place. Press <kbd>Enter</kbd> to confirm or <kbd>Esc</kbd> to cancel.</li>
+    <li><strong>Drag a label</strong> to move it anywhere around the chart. Labels cannot be dropped on top of the pie itself.</li>
+    <li>Press <kbd>Delete</kbd> or <kbd>Backspace</kbd> to remove the selected slice.</li>
+    <li>Press <kbd>Ctrl</kbd>+<kbd>Z</kbd> to undo and <kbd>Ctrl</kbd>+<kbd>Y</kbd> to redo.</li>
+  </ul>
+
+  <h3>3. Change the look</h3>
+  <p>The ribbon at the top is grouped like a familiar office app:</p>
+  <ul>
+    <li><strong>Home</strong> &mdash; add slices, set the title and subtitle, pick a colour palette.</li>
+    <li><strong>Design</strong> &mdash; donut hole, slice gaps, start angle, direction, canvas size, background and border.</li>
+    <li><strong>Labels</strong> &mdash; label placement, percentages or raw values, decimals, font size, prefix and suffix, legend.</li>
+  </ul>
+  <p>To turn a pie into a donut chart, drag the <strong>Hole</strong> slider in the Design tab. Add <strong>Center text</strong> on the Home tab to put a total in the middle.</p>
+
+  <h3>4. Export</h3>
+  <p><strong>Download PNG</strong> gives you a raster image at twice the on-screen size, ready for a slide deck or a document. <strong>SVG</strong> gives you a vector file that stays sharp at any size and can be edited later in Illustrator, Figma or Inkscape.</p>
+  <p>Tick <strong>Transparent</strong> in the Design tab if you want the chart to sit on a coloured background.</p>
+
+  <h3>Saving your work</h3>
+  <p>Your current chart is saved automatically in this browser, so closing the tab will not lose it. Use <strong>Save</strong> to keep several named charts and <strong>Load</strong> to bring one back. Because storage is local to your browser, saved charts do not follow you to another device.</p>
+
+  <button class="back" data-page="studio">&larr; Back to the editor</button>
+</article>
+
+<article class="page" id="page-faq">
+  <h2>Frequently asked questions</h2>
+  <p class="lede">Short answers about how Pie Chart Studio works, what it costs, and where your data goes.</p>
+
+  <div class="q">Is it free?</div>
+  <p>Yes, completely, with no account, no sign-up and no watermark on exports.</p>
+
+  <div class="q">Where is my data stored?</div>
+  <p>In your browser only. The chart is drawn on your own machine and nothing is sent to a server, so your figures never leave your computer. The trade-off is that saved charts live in one browser on one device.</p>
+
+  <div class="q">Does it work offline?</div>
+  <p>Yes. Once the page has loaded it needs no connection. You can even save the page to your computer and open it later from disk.</p>
+
+  <div class="q">What is the difference between PNG and SVG?</div>
+  <p>PNG is a normal image, exported at twice the on-screen size so it stays crisp in slides and documents. SVG is a vector file: it scales to any size without blurring and can be reopened in design tools. Choose SVG for print, or if someone else may need to restyle the chart.</p>
+
+  <div class="q">Can I make a donut chart?</div>
+  <p>Yes. Open the <strong>Design</strong> tab and drag the <strong>Hole</strong> slider. Any value above zero turns the pie into a donut, and you can put a total or a label in the middle using <strong>Center text</strong>.</p>
+
+  <div class="q">Why does dragging a slice edge not change the total?</div>
+  <p>Resizing moves value between the two slices either side of the edge you are dragging. That keeps the total fixed so the rest of the chart does not shift under your cursor while you work. To change the total instead, type a new number in the value box.</p>
+
+  <div class="q">My percentages do not add up to 100. Why?</div>
+  <p>Percentages are calculated from the values you entered, so they always reflect the real total. If the numbers look wrong, check that every row uses the same unit &mdash; mixing currency with percentages makes one slice dominate the chart.</p>
+
+  <div class="q">One slice is tiny and its label is unreadable. What can I do?</div>
+  <p>Turn on <strong>Hide &lt;</strong> in the Labels tab to suppress labels on very small slices, and rely on the legend instead. You can also drag individual labels to a clearer spot.</p>
+
+  <div class="q">Can I use the charts commercially?</div>
+  <p>Yes. The charts you create are yours, for reports, presentations, clients or publication. No attribution is required.</p>
+
+  <div class="q">How many slices can I add?</div>
+  <p>There is no hard limit, but pie charts become hard to read past roughly seven or eight slices. Beyond that, consider grouping the smallest categories into an &ldquo;Other&rdquo; slice.</p>
+
+  <div class="q">Does it work on a phone?</div>
+  <p>The chart renders and scales on mobile, but the drag interactions are designed for a mouse. A desktop or laptop gives a much better editing experience.</p>
+
+  <button class="back" data-page="studio">&larr; Back to the editor</button>
+</article>
+
 <div id="toasts"></div>
 
 <div class="wrap">
@@ -341,6 +468,16 @@ code{background:var(--panel2);padding:1px 4px;border-radius:0}
   <p id="confirmMsg"></p>
   <div class="row"><button id="confirmNo" class="ghost">Cancel</button>
     <button id="confirmYes" class="primary">OK</button></div>
+</dialog>
+
+<dialog id="dlgHistory">
+  <h3 style="margin:0 0 4px">Chart history</h3>
+  <p class="hint" style="margin:0 0 12px">Recent charts from this browser, named from their contents.</p>
+  <div id="histList"></div>
+  <div class="row" style="margin-top:14px;justify-content:space-between">
+    <button id="histClear" class="ghost">Clear history</button>
+    <button id="histClose" class="primary">Close</button>
+  </div>
 </dialog>
 
 <dialog id="dlgPresets">
@@ -390,11 +527,108 @@ var state = JSON.parse(JSON.stringify(DEFAULTS));
 
 /* ---------------- persistence ---------------- */
 var LS_AUTO = "pcs_auto", LS_PRESETS = "pcs_presets";
+var histRecTimer = null;
 function autosave(){
   try{ localStorage.setItem(LS_AUTO, JSON.stringify(state)); }catch(e){}
   if(typeof pushHistory === "function" && !RESTORING) pushHistory();
+  // Log to chart history once editing settles, not on every keystroke.
+  if(!RESTORING && typeof recordHistory === "function"){
+    if(histRecTimer) clearTimeout(histRecTimer);
+    histRecTimer = setTimeout(function(){ recordHistory(); histRecTimer = null; }, 2500);
+  }
 }
 var RESTORING = false;
+
+/* ---------------- chart history ---------------- */
+var LS_HIST = "pcs_history", HIST_MAX = 30;
+
+// Derive a readable name from what the chart actually contains: the explicit
+// title if there is one, otherwise the biggest slices, which is what a reader
+// would call the chart anyway.
+function deriveTitle(st){
+  if(st.title && st.title.trim()) return st.title.trim();
+
+  var live = (st.slices || []).filter(function(s){ return (+s.value||0) > 0; });
+  if(!live.length) return "Empty chart";
+
+  var total = live.reduce(function(a,s){ return a + (+s.value||0); }, 0) || 1;
+  var top = live.slice().sort(function(a,b){ return (+b.value||0) - (+a.value||0); });
+  var clean = function(n){ return String(n || "Untitled").trim().replace(/\s+/g, " "); };
+
+  if(top.length === 1) return clean(top[0].name);
+
+  var lead = (+top[0].value||0) / total;
+  // One slice dominating reads better as "X vs the rest".
+  if(lead >= 0.6 && top.length > 2)
+    return clean(top[0].name) + " vs " + (top.length - 1) + " others";
+
+  var names = top.slice(0, 2).map(function(s){ return clean(s.name); });
+  var rest = live.length - names.length;
+  return names.join(", ") + (rest > 0 ? " +" + rest + " more" : "");
+}
+
+function loadHistory(){
+  try{ return JSON.parse(localStorage.getItem(LS_HIST)) || []; }catch(e){ return []; }
+}
+function saveHistory(list){
+  try{ localStorage.setItem(LS_HIST, JSON.stringify(list.slice(0, HIST_MAX))); }catch(e){}
+}
+
+// Fingerprint of the chart's data, so edits update an entry instead of
+// stacking near-identical ones.
+function chartKey(st){
+  return (st.slices || []).map(function(s){ return s.name + ":" + s.value; }).join("|");
+}
+
+function recordHistory(){
+  var live = (state.slices || []).filter(function(s){ return (+s.value||0) > 0; });
+  if(!live.length) return;
+  var list = loadHistory();
+  var key = chartKey(state);
+  var entry = {
+    key: key,
+    title: deriveTitle(state),
+    slices: live.length,
+    when: Date.now(),
+    snap: JSON.stringify(state)
+  };
+  var at = -1;
+  for(var i = 0; i < list.length; i++){ if(list[i].key === key){ at = i; break; } }
+  if(at > -1) list.splice(at, 1);
+  list.unshift(entry);
+  saveHistory(list);
+}
+
+function openHistory(){
+  var list = loadHistory();
+  var box = $("#histList");
+  if(!list.length){
+    box.innerHTML = '<p class="hint">No charts yet. Build one and it will show up here.</p>';
+  } else {
+    box.innerHTML = "";
+    list.forEach(function(h, i){
+      var row = document.createElement("div");
+      row.className = "hist-row";
+      var d = new Date(h.when);
+      row.innerHTML =
+        '<div class="hist-main"><b>' + esc(h.title) + '</b>' +
+        '<span class="hist-sub">' + h.slices + ' slices &middot; ' +
+        d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) +
+        '</span></div>' +
+        '<button data-open>Open</button><button data-del class="ghost">&#10005;</button>';
+      row.querySelector("[data-open]").addEventListener("click", function(){
+        applySnapshot(h.snap);
+        $("#dlgHistory").close();
+        toast("Opened: " + h.title, "ok");
+      });
+      row.querySelector("[data-del]").addEventListener("click", function(){
+        var cur = loadHistory(); cur.splice(i, 1); saveHistory(cur); openHistory();
+      });
+      box.appendChild(row);
+    });
+  }
+  $("#dlgHistory").showModal();
+}
 
 /* ---------------- undo / redo ---------------- */
 var undoStack = [], redoStack = [], UNDO_MAX = 60, histTimer = null;
@@ -1043,6 +1277,56 @@ function cumAt(n){
   var acc = 0;
   for(var i = 0; i < n; i++) acc += (+data[i].value||0) / t;
   return acc * Math.PI * 2;
+}
+
+/* ---------------- page navigation ---------------- */
+var currentPage = "studio";
+
+function showPage(name){
+  currentPage = name;
+  var studio = (name === "studio");
+  document.body.classList.toggle("reading", !studio);
+  document.querySelector(".wrap").style.display = studio ? "" : "none";
+  document.getElementById("ribbon").querySelector(".rb-body").style.display = studio ? "" : "none";
+  ["howto","faq"].forEach(function(p){
+    var el = document.getElementById("page-" + p);
+    if(el) el.classList.toggle("on", p === name);
+  });
+  Array.prototype.forEach.call(document.querySelectorAll("#brandMenu a"), function(a){
+    a.setAttribute("aria-current", a.dataset.page === name ? "true" : "false");
+  });
+  if(location.hash.slice(1) !== (studio ? "" : name)){
+    try{ history.replaceState(null, "", studio ? location.pathname : "#" + name); }catch(e){}
+  }
+  if(studio){ fitStage(); draw(); }
+  window.scrollTo(0, 0);
+}
+
+function initPages(){
+  var btn = document.getElementById("brandBtn");
+  var menu = document.getElementById("brandMenu");
+  btn.addEventListener("click", function(e){
+    e.stopPropagation();
+    var open = menu.hidden;
+    menu.hidden = !open;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+  document.addEventListener("click", function(){
+    if(!menu.hidden){ menu.hidden = true; btn.setAttribute("aria-expanded","false"); }
+  });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-page]"), function(a){
+    a.addEventListener("click", function(e){
+      e.preventDefault(); e.stopPropagation();
+      menu.hidden = true; btn.setAttribute("aria-expanded","false");
+      showPage(a.dataset.page);
+    });
+  });
+  window.addEventListener("hashchange", function(){
+    var h = location.hash.slice(1);
+    showPage((h === "howto" || h === "faq") ? h : "studio");
+  });
+  var h0 = location.hash.slice(1);
+  if(h0 === "howto" || h0 === "faq") showPage(h0);
 }
 
 /* ---------------- ribbon ---------------- */
@@ -1717,6 +2001,16 @@ function initEvents(){
     });
   });
   $("#btnLoad").addEventListener("click", openPresets);
+  $("#btnHistory").addEventListener("click", openHistory);
+  $("#histClose").addEventListener("click", function(){ $("#dlgHistory").close(); });
+  $("#histClear").addEventListener("click", function(){
+    askConfirm("Clear the whole chart history?").then(function(ok){
+      if(!ok) return;
+      try{ localStorage.removeItem(LS_HIST); }catch(e){}
+      openHistory();
+      toast("History cleared.", "ok");
+    });
+  });
   $("#presetClose").addEventListener("click", function(){ $("#dlgPresets").close(); });
 }
 
@@ -1726,6 +2020,7 @@ function initEvents(){
   if(!autoload()) state.slices = JSON.parse(JSON.stringify(DEFAULT_SLICES));
   renderPaletteUI();
   initRibbon();
+  initPages();
   initEvents();
   pushHistory(true);   // baseline so the first Ctrl+Z has somewhere to go
   refreshAll();
