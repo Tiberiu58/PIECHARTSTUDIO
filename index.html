@@ -60,9 +60,9 @@ body{margin:0;font:14px/1.5 Georgia,"Times New Roman","Nimbus Roman",serif;backg
 .side{background:var(--panel);border-right:1px solid var(--line);padding:16px;overflow:auto}
 .stage{padding:14px 12px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
   gap:12px;height:calc(100vh - var(--chromeH,120px));overflow:hidden}
-#chartWrap{position:relative;display:inline-block;max-width:calc(100% - 104px);margin-left:96px}
+#chartWrap{position:relative;display:inline-block;max-width:calc(100% - 110px);margin-right:102px}
 /* Legend toggle: sits outside the exported canvas, level with the legend. */
-#legendBtn{position:absolute;right:calc(100% + 8px);transform:translateY(-50%);
+#legendBtn{position:absolute;left:calc(100% + 8px);transform:translateY(-50%);
   white-space:nowrap;font-size:11.5px;padding:4px 9px;line-height:1.2;
   background:var(--panel);border:1px solid var(--line);color:var(--muted);cursor:pointer}
 #legendBtn:hover{border-color:var(--accent);color:var(--text)}
@@ -173,13 +173,36 @@ button.icon{padding:4px 8px;line-height:1}
 .page .back{display:inline-block;margin-top:26px;padding:8px 16px;border:1px solid var(--line);
   background:var(--panel);color:var(--text);cursor:pointer;font:inherit;font-size:13.5px}
 .page .back:hover{border-color:var(--accent)}
-#dlgHistory{max-width:560px}
-#histList{max-height:420px;overflow-y:auto}
-.hist-row{display:flex;align-items:center;gap:8px;padding:9px 4px;border-bottom:1px solid var(--line)}
-.hist-row:last-child{border-bottom:none}
-.hist-main{flex:1;min-width:0}
-.hist-main b{display:block;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.hist-sub{display:block;font-size:11.5px;color:var(--muted)}
+/* Left history sidebar */
+#sidebar{position:fixed;left:0;top:var(--chromeH,120px);bottom:0;width:230px;z-index:35;
+  background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;
+  transform:translateX(-231px);transition:transform .18s ease}
+body.sb-open #sidebar{transform:none}
+#sidebar h4{margin:0;padding:11px 12px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px}
+#sidebar h4 span{flex:1}
+#sbList{flex:1;overflow-y:auto;padding:6px}
+#sbFoot{border-top:1px solid var(--line);padding:8px}
+#sbFoot button{width:100%;font-size:12px}
+.sb-item{display:flex;align-items:center;gap:6px;padding:8px 9px;cursor:pointer;
+  border:1px solid transparent;margin-bottom:2px}
+.sb-item:hover{background:var(--panel2);border-color:var(--line)}
+.sb-item.cur{background:var(--panel2);border-color:var(--accent)}
+.sb-txt{flex:1;min-width:0}
+.sb-txt b{display:block;font-size:12.5px;font-weight:600;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.sb-txt span{display:block;font-size:10.5px;color:var(--muted)}
+.sb-x{opacity:0;border:none;background:none;color:var(--muted);cursor:pointer;padding:2px 4px;font-size:12px}
+.sb-item:hover .sb-x{opacity:1}
+.sb-x:hover{color:#e5484d}
+.sb-empty{color:var(--muted);font-size:11.5px;padding:14px 10px;line-height:1.5}
+/* Toggle tab, always reachable on the left edge */
+#sbToggle{position:fixed;left:0;top:calc(var(--chromeH,120px) + 12px);z-index:36;
+  background:var(--panel);border:1px solid var(--line);border-left:none;color:var(--muted);
+  cursor:pointer;padding:10px 5px;font-size:12px;line-height:1;transition:left .18s ease}
+body.sb-open #sbToggle{left:230px}
+#sbToggle:hover{color:var(--text);border-color:var(--accent)}
+body.sb-open .stage{padding-left:242px}
 /* In-app messages replace browser alert()/confirm() dialogs. */
 #toasts{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:200;
   display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
@@ -435,6 +458,13 @@ code{background:var(--panel2);padding:1px 4px;border-radius:0}
 
 <div id="toasts"></div>
 
+<aside id="sidebar">
+  <h4><span>History</span></h4>
+  <div id="sbList"></div>
+  <div id="sbFoot"><button id="sbClear" class="ghost">Clear history</button></div>
+</aside>
+<button id="sbToggle" title="Toggle history sidebar">&#9776;</button>
+
 <div class="wrap">
   <main class="stage">
     <div id="chartWrap">
@@ -470,16 +500,6 @@ code{background:var(--panel2);padding:1px 4px;border-radius:0}
   <p id="confirmMsg"></p>
   <div class="row"><button id="confirmNo" class="ghost">Cancel</button>
     <button id="confirmYes" class="primary">OK</button></div>
-</dialog>
-
-<dialog id="dlgHistory">
-  <h3 style="margin:0 0 4px">Chart history</h3>
-  <p class="hint" style="margin:0 0 12px">Recent charts from this browser, named from their contents.</p>
-  <div id="histList"></div>
-  <div class="row" style="margin-top:14px;justify-content:space-between">
-    <button id="histClear" class="ghost">Clear history</button>
-    <button id="histClose" class="primary">Close</button>
-  </div>
 </dialog>
 
 <dialog id="dlgPresets">
@@ -599,37 +619,61 @@ function recordHistory(){
   if(at > -1) list.splice(at, 1);
   list.unshift(entry);
   saveHistory(list);
+  currentHistKey = key;
+  if(typeof renderSidebar === "function") renderSidebar();
 }
 
-function openHistory(){
+var currentHistKey = null;
+
+// Renders the left sidebar. Called on boot and after every history write.
+function renderSidebar(){
+  var box = $("#sbList");
+  if(!box) return;
   var list = loadHistory();
-  var box = $("#histList");
+
   if(!list.length){
-    box.innerHTML = '<p class="hint">No charts yet. Build one and it will show up here.</p>';
-  } else {
-    box.innerHTML = "";
-    list.forEach(function(h, i){
-      var row = document.createElement("div");
-      row.className = "hist-row";
-      var d = new Date(h.when);
-      row.innerHTML =
-        '<div class="hist-main"><b>' + esc(h.title) + '</b>' +
-        '<span class="hist-sub">' + h.slices + ' slices &middot; ' +
-        d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) +
-        '</span></div>' +
-        '<button data-open>Open</button><button data-del class="ghost">&#10005;</button>';
-      row.querySelector("[data-open]").addEventListener("click", function(){
-        applySnapshot(h.snap);
-        $("#dlgHistory").close();
-        toast("Opened: " + h.title, "ok");
-      });
-      row.querySelector("[data-del]").addEventListener("click", function(){
-        var cur = loadHistory(); cur.splice(i, 1); saveHistory(cur); openHistory();
-      });
-      box.appendChild(row);
-    });
+    box.innerHTML = '<p class="sb-empty">No charts yet.<br>Build one and it appears here automatically.</p>';
+    return;
   }
-  $("#dlgHistory").showModal();
+
+  box.innerHTML = "";
+  list.forEach(function(h, i){
+    var row = document.createElement("div");
+    row.className = "sb-item" + (h.key === currentHistKey ? " cur" : "");
+    var d = new Date(h.when);
+    row.innerHTML =
+      '<div class="sb-txt"><b></b><span>' + h.slices + ' slices &#183; ' +
+      d.toLocaleDateString([], {month:"short", day:"numeric"}) + ' ' +
+      d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) + '</span></div>' +
+      '<button class="sb-x" title="Remove">&#10005;</button>';
+    row.querySelector("b").textContent = h.title;   // textContent: never trust stored text as markup
+    row.title = h.title;
+
+    row.addEventListener("click", function(e){
+      if(e.target.closest(".sb-x")) return;
+      currentHistKey = h.key;
+      applySnapshot(h.snap);
+      renderSidebar();
+      toast("Opened: " + h.title, "ok", 1200);
+    });
+    row.querySelector(".sb-x").addEventListener("click", function(e){
+      e.stopPropagation();
+      var cur = loadHistory();
+      cur.splice(i, 1);
+      saveHistory(cur);
+      renderSidebar();
+    });
+    box.appendChild(row);
+  });
+}
+
+function toggleSidebar(force){
+  var open = (force === undefined) ? !document.body.classList.contains("sb-open") : force;
+  document.body.classList.toggle("sb-open", open);
+  try{ localStorage.setItem("pcs_sb", open ? "1" : "0"); }catch(e){}
+  if(open) renderSidebar();
+  fitStage();
+  draw();
 }
 
 /* ---------------- undo / redo ---------------- */
@@ -1547,6 +1591,12 @@ function fitStage(){
   document.documentElement.style.setProperty("--chromeH", chrome + "px");
   var cb = $("#chartBox");
   if(cb) cb.style.setProperty("--chartMaxH", Math.max(160, window.innerHeight - chrome - 34) + "px");
+  // The sidebar eats horizontal room; keep the chart inside what is left.
+  var wrap = document.getElementById("chartWrap");
+  if(wrap){
+    var sb = document.body.classList.contains("sb-open") ? 242 : 0;
+    wrap.style.maxWidth = "calc(100% - " + (110 + sb) + "px)";
+  }
 }
 window.addEventListener("resize", fitStage);
 
@@ -2003,13 +2053,14 @@ function initEvents(){
     });
   });
   $("#btnLoad").addEventListener("click", openPresets);
-  $("#btnHistory").addEventListener("click", openHistory);
-  $("#histClose").addEventListener("click", function(){ $("#dlgHistory").close(); });
-  $("#histClear").addEventListener("click", function(){
+  $("#btnHistory").addEventListener("click", function(){ toggleSidebar(); });
+  $("#sbToggle").addEventListener("click", function(){ toggleSidebar(); });
+  $("#sbClear").addEventListener("click", function(){
     askConfirm("Clear the whole chart history?").then(function(ok){
       if(!ok) return;
       try{ localStorage.removeItem(LS_HIST); }catch(e){}
-      openHistory();
+      currentHistKey = null;
+      renderSidebar();
       toast("History cleared.", "ok");
     });
   });
@@ -2023,6 +2074,8 @@ function initEvents(){
   renderPaletteUI();
   initRibbon();
   initPages();
+  if(localStorage.getItem("pcs_sb") === "1") document.body.classList.add("sb-open");
+  renderSidebar();
   initEvents();
   pushHistory(true);   // baseline so the first Ctrl+Z has somewhere to go
   refreshAll();
