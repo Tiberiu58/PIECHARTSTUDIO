@@ -1994,10 +1994,22 @@ function initEvents(){
   });
   var bc = $("#btnClear");
   if(bc) bc.addEventListener("click", function(){
-    askConfirm("Remove all slices?").then(function(ok){
+    askConfirm("Clear the chart? This removes every slice along with the title, subtitle and center text.").then(function(ok){
       if(!ok) return;
-      state.slices = []; selected = -1; renderSlices(); draw(); updateTotals(); autosave();
-      toast("All slices removed.", "ok");
+      // Commit the pre-clear state first: refreshAll() calls autosave(), whose
+      // debounced history push would otherwise overwrite the restore point.
+      pushHistory(true);
+      // Clear wipes the chart's content, not its styling — palette, shape and
+      // label settings stay put (Reset Options is the one that restores those).
+      state.slices = [];
+      state.title = "";
+      state.subtitle = "";
+      state.centerText = "";
+      selected = -1;
+      currentHistKey = null;
+      refreshAll();
+      pushHistory(true);        // record the cleared state as its own step
+      toast("Chart cleared.", "ok");
     });
   });
 
