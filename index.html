@@ -250,6 +250,7 @@ code{background:var(--panel2);padding:1px 4px;border-radius:0}
     <button id="btnData">Import / Paste data</button>
     <button id="btnPng" class="primary">Download PNG</button>
     <button id="btnSvg">SVG</button>
+    <button id="btnCsv">CSV</button>
     <button id="btnTheme" class="ghost" title="Toggle editor theme">Theme</button>
   </div>
   <div class="rb-body">
@@ -458,6 +459,8 @@ code{background:var(--panel2);padding:1px 4px;border-radius:0}
 
 <div id="toasts"></div>
 
+<input type="file" id="projFile" accept=".json,application/json" hidden>
+
 <aside id="sidebar">
   <h4><span>History</span></h4>
   <div id="sbList"></div>
@@ -503,10 +506,16 @@ code{background:var(--panel2);padding:1px 4px;border-radius:0}
 </dialog>
 
 <dialog id="dlgPresets">
-  <h3 style="margin:0 0 10px">Saved charts</h3>
+  <h3 style="margin:0 0 4px">Saved charts</h3>
+  <p class="hint" style="margin:0 0 12px">Stored in this browser. To keep a chart permanently
+    or move it to another device, save it as a file.</p>
   <div id="presetList"></div>
-  <div class="row" style="margin-top:12px;justify-content:flex-end">
-    <button id="presetClose" class="ghost">Close</button>
+  <div class="row" style="margin-top:14px;justify-content:space-between">
+    <div class="row" style="gap:8px">
+      <button id="projSave">Save to file</button>
+      <button id="projOpen">Open file&hellip;</button>
+    </div>
+    <button id="presetClose" class="primary">Close</button>
   </div>
 </dialog>
 
@@ -1771,6 +1780,66 @@ function cleanSVG(){
 function exportSVG(){
   downloadBlob(new Blob([cleanSVG().svg], {type:"image/svg+xml;charset=utf-8"}), fileBase() + ".svg");
 }
+
+// RFC 4180 quoting: wrap when the field holds a comma, quote or newline.
+function csvCell(v){
+  var s = String(v === undefined || v === null ? "" : v);
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function exportCSV(){
+  var live = state.slices.filter(function(s){ return (+s.value || 0) > 0; });
+  if(!live.length){ toast("Nothing to export yet - add a slice first.", "err"); return; }
+  var total = live.reduce(function(a, s){ return a + (+s.value || 0); }, 0) || 1;
+  var dec = +state.decimals || 0;
+
+  var rows = [["Name", "Value", "Percent"].join(",")];
+  live.forEach(function(s){
+    rows.push([
+      csvCell(s.name),
+      csvCell(+s.value),
+      csvCell(((+s.value) / total * 100).toFixed(dec))
+    ].join(","));
+  });
+  rows.push([csvCell("Total"), csvCell(total), csvCell((100).toFixed(dec))].join(","));
+
+  var CRLF = String.fromCharCode(13, 10);
+  var BOM  = String.fromCharCode(65279);   // Excel needs it to read UTF-8 names
+  var blob = new Blob([BOM + rows.join(CRLF)], {type:"text/csv;charset=utf-8"});
+  downloadBlob(blob, fileBase() + ".csv");
+  toast("CSV exported.", "ok", 1400);
+}
+
+// Full chart as a .json file — the only copy that survives clearing browser
+// data or moving to another machine.
+function exportProject(){
+  var payload = { app:"piechart.studio", version:1, saved:new Date().toISOString(), chart:state };
+  downloadBlob(new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"}),
+               fileBase() + ".piechart.json");
+  toast("Chart file saved.", "ok", 1400);
+}
+
+function importProject(file){
+  var rd = new FileReader();
+  rd.onload = function(){
+    var data;
+    try { data = JSON.parse(rd.result); }
+    catch(e){ toast("That file is not a valid chart file.", "err"); return; }
+
+    var chart = (data && data.chart) ? data.chart : data;
+    if(!chart || !Array.isArray(chart.slices)){
+      toast("That file does not contain a chart.", "err");
+      return;
+    }
+    pushHistory(true);
+    applySnapshot(JSON.stringify(chart));
+    pushHistory(true);
+    recordHistory();
+    toast("Chart loaded from file.", "ok");
+  };
+  rd.onerror = function(){ toast("Could not read that file.", "err"); };
+  rd.readAsText(file);
+}
 function exportPNG(scale){
   var r = cleanSVG(), s = scale || 2;
   var img = new Image();
@@ -2015,6 +2084,16 @@ function initEvents(){
 
   $("#btnPng").addEventListener("click", function(){ exportPNG(2); });
   $("#btnSvg").addEventListener("click", exportSVG);
+  $("#btnCsv").addEventListener("click", exportCSV);
+  $("#projSave").addEventListener("click", exportProject);
+  $("#projOpen").addEventListener("click", function(){ $("#projFile").click(); });
+  $("#projFile").addEventListener("change", function(e){
+    var f = e.target.files[0];
+    if(f) importProject(f);
+    e.target.value = "";          // allow re-picking the same file
+    var dlg = $("#dlgPresets");
+    if(dlg.open) dlg.close();
+  });
   $("#btnTheme").addEventListener("click", function(){
     var cur = document.documentElement.getAttribute("data-theme");
     var next = (cur === "light") ? "dark" : "light";
@@ -2060,8 +2139,12 @@ function initEvents(){
       var all = {};
       try { all = JSON.parse(localStorage.getItem(LS_PRESETS) || "{}"); } catch(e){}
       all[name] = JSON.parse(JSON.stringify(state));
-      localStorage.setItem(LS_PRESETS, JSON.stringify(all));
-      toast("Saved: " + name, "ok");
+      try {
+        localStorage.setItem(LS_PRESETS, JSON.stringify(all));
+        toast("Saved in this browser: " + name, "ok");
+      } catch(e){
+        toast("Browser storage is full — use Save to file instead.", "err", 4000);
+      }
     });
   });
   $("#btnLoad").addEventListener("click", openPresets);
