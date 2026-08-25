@@ -22,7 +22,7 @@
 <meta name="twitter:description" content="Click a slice to edit it, drag to resize, rename labels in place, then export to PNG or SVG. Free, no sign-up.">
 <meta name="twitter:image" content="https://piechart.studio/preview.png">
 
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%235B8CFF'/%3E%3Cpath d='M16 16 L16 1 A15 15 0 0 1 29.5 9.5 Z' fill='%23FF7A5A'/%3E%3Cpath d='M16 16 L29.5 9.5 A15 15 0 0 1 24 28 Z' fill='%233FC79A'/%3E%3Ccircle cx='16' cy='16' r='5.5' fill='%230f1115'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2032%2032%27%3E%3Ccircle%20cx%3D%2716%27%20cy%3D%2716%27%20r%3D%2715%27%20fill%3D%27%235B8CFF%27%2F%3E%3Cpath%20d%3D%27M16%2016%20L16%201%20A15%2015%200%200%201%2029.5%209.5%20Z%27%20fill%3D%27%23FF7A5A%27%2F%3E%3Cpath%20d%3D%27M16%2016%20L29.5%209.5%20A15%2015%200%200%201%2024%2028%20Z%27%20fill%3D%27%233FC79A%27%2F%3E%3Ccircle%20cx%3D%2716%27%20cy%3D%2716%27%20r%3D%275.5%27%20fill%3D%27%230f1115%27%2F%3E%3C%2Fsvg%3E">
 <style>
 :root{
   --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a;
@@ -390,7 +390,58 @@ var state = JSON.parse(JSON.stringify(DEFAULTS));
 
 /* ---------------- persistence ---------------- */
 var LS_AUTO = "pcs_auto", LS_PRESETS = "pcs_presets";
-function autosave(){ try{ localStorage.setItem(LS_AUTO, JSON.stringify(state)); }catch(e){} }
+function autosave(){
+  try{ localStorage.setItem(LS_AUTO, JSON.stringify(state)); }catch(e){}
+  if(typeof pushHistory === "function" && !RESTORING) pushHistory();
+}
+var RESTORING = false;
+
+/* ---------------- undo / redo ---------------- */
+var undoStack = [], redoStack = [], UNDO_MAX = 60, histTimer = null;
+
+function snapshot(){ return JSON.stringify(state); }
+
+// Called after every change. Coalesces rapid edits (typing, dragging) into one
+// history entry so a single Ctrl+Z undoes a whole gesture, not one character.
+function pushHistory(immediate){
+  if(histTimer){ clearTimeout(histTimer); histTimer = null; }
+  var take = function(){
+    var snap = snapshot();
+    if(undoStack.length && undoStack[undoStack.length-1] === snap) return;
+    undoStack.push(snap);
+    if(undoStack.length > UNDO_MAX) undoStack.shift();
+    redoStack.length = 0;
+    histTimer = null;
+  };
+  if(immediate) take(); else histTimer = setTimeout(take, 420);
+}
+
+function applySnapshot(json){
+  RESTORING = true;
+  var restored = JSON.parse(json);
+  for(var k in DEFAULTS) if(!(k in restored)) restored[k] = DEFAULTS[k];
+  state = restored;
+  if(selected >= state.slices.length) selected = -1;
+  renderPaletteUI();
+  refreshAll();
+  RESTORING = false;
+}
+
+function undo(){
+  if(histTimer){ clearTimeout(histTimer); histTimer = null; }
+  if(undoStack.length < 2){ toast("Nothing to undo."); return; }
+  redoStack.push(undoStack.pop());
+  applySnapshot(undoStack[undoStack.length-1]);
+  toast("Undo", "ok", 900);
+}
+
+function redo(){
+  if(!redoStack.length){ toast("Nothing to redo."); return; }
+  var snap = redoStack.pop();
+  undoStack.push(snap);
+  applySnapshot(snap);
+  toast("Redo", "ok", 900);
+}
 function autoload(){
   try{
     var s = JSON.parse(localStorage.getItem(LS_AUTO));
@@ -572,14 +623,33 @@ function sectorPath(cx, cy, R, r, a0, a1, dir, round){
 }
 
 /* ---------------- labels ---------------- */
-function labelText(frac, s){
+// Greedy word wrap; breaks over-long single words so nothing overflows.
+function wrapWords(text, maxChars){
+  if(!maxChars || String(text).length <= maxChars) return String(text);
+  var words = String(text).split(/\s+/), lines = [], cur = "";
+  words.forEach(function(w){
+    while(w.length > maxChars){
+      if(cur){ lines.push(cur); cur = ""; }
+      lines.push(w.slice(0, maxChars));
+      w = w.slice(maxChars);
+    }
+    if(!cur) cur = w;
+    else if((cur + " " + w).length <= maxChars) cur += " " + w;
+    else { lines.push(cur); cur = w; }
+  });
+  if(cur) lines.push(cur);
+  return lines.join("\n");
+}
+
+function labelText(frac, s, wrapChars){
   var S = state;
   var pct = (frac * 100).toFixed(+S.decimals || 0) + "%";
   var raw = S.prefix + fmtNum(+s.value) + S.suffix;
-  if(S.valMode === "pct")  return s.name + "\n" + pct;
-  if(S.valMode === "raw")  return s.name + "\n" + raw;
-  if(S.valMode === "both") return s.name + "\n" + raw + "  (" + pct + ")";
-  return s.name;
+  var name = wrapWords(s.name, wrapChars);
+  if(S.valMode === "pct")  return name + "\n" + pct;
+  if(S.valMode === "raw")  return name + "\n" + wrapWords(raw, wrapChars);
+  if(S.valMode === "both") return name + "\n" + wrapWords(raw + "  (" + pct + ")", wrapChars);
+  return name;
 }
 function textEl(txt, x, y, fs, fill, anchor, idx){
   var lines = String(txt).split("\n");
@@ -604,14 +674,15 @@ function buildSVG(){
   var legendOn = S.legend && data.length > 0;
 
   var padT = (S.title ? 38 : 0) + (S.subtitle ? 22 : 0) + 18;
-  var legendCols = 2;
-  var legendRows = legendOn ? Math.ceil(data.length / legendCols) : 0;
-  var legendH = legendOn ? legendRows * 22 + 18 : 0;
 
   // Callout labels sit outside the circle; widen the canvas to fit the longest
   // one on each side instead of shrinking the pie into an unreadable disc.
+  // The canvas may grow only until it hits 16:10 — past that, labels wrap.
   var isCallout = (S.labelMode === "callout");
-  var sideRoom = 0;
+  var CHAR_W = (+S.fontSize) * 0.56;   // ~0.56em per char for the serif stack
+  var ELBOW = 48;
+  var sideRoom = 0, wrapChars = 0;
+
   if(isCallout && data.length){
     var longest = 0;
     data.forEach(function(s){
@@ -620,12 +691,34 @@ function buildSVG(){
       var val = (S.prefix + fmtNum(+s.value) + S.suffix).length + (S.valMode === "both" ? pct.length : 0);
       longest = Math.max(longest, line, S.valMode === "nameonly" ? 0 : val);
     });
-    // ~0.56em per character for the default UI font, plus the elbow run.
-    sideRoom = Math.ceil(longest * (+S.fontSize) * 0.56) + 48;
-    sideRoom = Math.min(sideRoom, size * 0.9);
+    var want = Math.ceil(longest * CHAR_W) + ELBOW;
+
+    // 16:10 is the widest the canvas may get, measured against the final height.
+    // Legend columns/gap depend on width, which depends on this cap, so settle
+    // it over two passes instead of guessing once.
+    var maxSide = 0;
+    for(var pass = 0; pass < 2; pass++){
+      var wGuess = size + Math.min(want, maxSide || want) * 2;
+      var colsG  = legendOn ? Math.max(1, Math.min(4, Math.floor(wGuess / 320))) : 2;
+      var gapG   = Math.min(40, Math.round(22 + Math.max(0, (wGuess - 640)) * 0.014));
+      var hGuess = size + padT + (legendOn ? Math.ceil(data.length / colsG) * gapG + 18 : 0);
+      maxSide = Math.max(0, (hGuess * 1.6 - size) / 2);
+    }
+
+    sideRoom = Math.min(want, maxSide);
+    // If the cap bit, wrap label text to whatever width actually fits.
+    if(want > maxSide) wrapChars = Math.max(8, Math.floor((sideRoom - ELBOW) / CHAR_W));
   }
 
   var W = size + sideRoom * 2;
+
+  // Legend: more columns and airier rows as the canvas gets wider.
+  var legendCols = legendOn ? Math.max(1, Math.min(4, Math.floor(W / 320))) : 2;
+  var legendRows = legendOn ? Math.ceil(data.length / legendCols) : 0;
+  var legendGap  = Math.round(22 + Math.max(0, (W - 640)) * 0.014);   // 22px -> ~36px
+  legendGap = Math.min(legendGap, 40);
+  var legendH = legendOn ? legendRows * legendGap + 18 : 0;
+
   var H = size + padT + legendH;
 
   var cx = W / 2, cy = padT + size / 2;
@@ -715,7 +808,7 @@ function buildSVG(){
         var off = g.s.out ? (+S.explode || 0) : 0;
         var rr = rInner > 0 ? (rInner + R) / 2 : R * 0.64;
         var p = polar(cx + Math.cos(g.mid)*off, cy + Math.sin(g.mid)*off, rr, g.mid);
-        out.push(textEl(labelText(g.frac, g.s), p[0], p[1], +S.fontSize, contrast(g.s.color), "middle",
+        out.push(textEl(labelText(g.frac, g.s, 0), p[0], p[1], +S.fontSize, contrast(g.s.color), "middle",
                         S.slices.indexOf(g.s)));
       });
     } else {
@@ -729,7 +822,12 @@ function buildSVG(){
         (item.right ? Rt : L).push(item);
       });
       var lh = (+S.fontSize) * 1.25;
-      var nLines = (S.valMode === "nameonly") ? 1 : 2;
+      // Wrapped names can run to several lines — size the slot off the tallest.
+      var nLines = 1;
+      L.concat(Rt).forEach(function(a){
+        var n = labelText(a.g.frac, a.g.s, wrapChars).split("\n").length;
+        if(n > nLines) nLines = n;
+      });
       var blockH = lh * nLines + 5;
       var minY = padT + 6, maxY = padT + size - 6;
 
@@ -750,12 +848,16 @@ function buildSVG(){
           var g = a.g;
           var elbowX = a.right ? (cx + R + 24) : (cx - R - 24);
           var endX   = a.right ? (elbowX + 14) : (elbowX - 14);
+          // A dragged label overrides the auto-stacked position.
+          if(g.s.lx !== undefined && g.s.ly !== undefined){
+            endX = g.s.lx; elbowX = g.s.lx + (a.right ? -14 : 14); a.py = g.s.ly;
+          }
           var sp = polar(a.bx, a.by, R + 2, g.mid);
           out.push('<polyline points="' + sp[0].toFixed(1) + ',' + sp[1].toFixed(1) + ' ' +
             elbowX.toFixed(1) + ',' + a.py.toFixed(1) + ' ' + endX.toFixed(1) + ',' + a.py.toFixed(1) +
             '" fill="none" stroke="' + g.s.color + '" stroke-width="1.4" opacity="0.85"/>');
           out.push('<circle cx="' + sp[0].toFixed(1) + '" cy="' + sp[1].toFixed(1) + '" r="2.2" fill="' + g.s.color + '"/>');
-          out.push(textEl(labelText(g.frac, g.s), a.right ? endX + 5 : endX - 5, a.py,
+          out.push(textEl(labelText(g.frac, g.s, wrapChars), a.right ? endX + 5 : endX - 5, a.py,
                           +S.fontSize, S.fg, a.right ? "start" : "end", S.slices.indexOf(g.s)));
         });
       });
@@ -767,11 +869,17 @@ function buildSVG(){
     var colW = W / legendCols;
     data.forEach(function(s, i){
       var col = i % legendCols, row = Math.floor(i / legendCols);
-      var x = col * colW + 18, y = y0 + row * 22;
+      var x = col * colW + 18, y = y0 + row * legendGap;
       var pct = ((+s.value)/total*100).toFixed(+S.decimals || 0);
+      // Trim the name so a long one cannot run into the next column.
+      var lfs = Math.max(10, S.fontSize - 2);
+      var tail = " — " + pct + "%";
+      var room = Math.max(6, Math.floor((colW - 40) / (lfs * 0.55)) - tail.length);
+      var nm = String(s.name);
+      if(nm.length > room) nm = nm.slice(0, Math.max(1, room - 1)).replace(/\s+$/, "") + "…";
       out.push('<rect x="' + x + '" y="' + y + '" width="12" height="12" fill="' + s.color + '"/>');
       out.push('<text x="' + (x + 18) + '" y="' + (y + 10) + '" font-size="' +
-        Math.max(10, S.fontSize - 2) + '" fill="' + S.fg + '">' + esc(s.name) + " — " + pct + '%</text>');
+        lfs + '" fill="' + S.fg + '">' + esc(nm + tail) + '</text>');
     });
   }
 
@@ -1012,6 +1120,8 @@ function renderSliceTab(){
     '<div class="rb-group">' +
       '<div class="rb-items">' +
         '<button class="rb-big" id="sfDup"><b>&#10697;</b>Duplicate</button>' +
+        '<button class="rb-big" id="sfPin"' + ((s.lx === undefined) ? ' disabled style="opacity:.45"' : '') +
+          ' title="Put the dragged label back where it belongs"><b>&#8617;</b>Reset label</button>' +
         '<button class="rb-big" id="sfDel"><b>&#128465;</b>Delete</button>' +
       '</div><div class="rb-group-label">Arrange</div>' +
     '</div>';
@@ -1059,6 +1169,11 @@ function renderSliceTab(){
   $("#sfDup").addEventListener("click", function(){
     state.slices.splice(selected+1, 0, {name:s.name+" copy", value:s.value, color:s.color, out:false});
     selectSlice(selected+1); autosave();
+  });
+  $("#sfPin").addEventListener("click", function(){
+    delete s.lx; delete s.ly;
+    draw(); autosave();
+    toast("Label position reset.", "ok", 1200);
   });
   $("#sfDel").addEventListener("click", function(){
     state.slices.splice(selected,1);
@@ -1112,6 +1227,18 @@ function editLabel(idx, node){
 // Delete / Backspace removes the selected slice — but never while the user is
 // typing in a field, or an inline label editor is open.
 document.addEventListener("keydown", function(e){
+  // Ctrl+Z / Ctrl+Y (and Ctrl+Shift+Z) work everywhere except inside a field.
+  if(e.ctrlKey || e.metaKey){
+    var k = (e.key || "").toLowerCase();
+    var el = e.target, t = el && el.tagName;
+    var typing = (t === "INPUT" || t === "TEXTAREA" || (el && el.isContentEditable));
+    if(!typing && (k === "z" || k === "y")){
+      e.preventDefault();
+      if(k === "y" || (k === "z" && e.shiftKey)) redo(); else undo();
+      return;
+    }
+  }
+
   if(e.key !== "Delete" && e.key !== "Backspace") return;
   if(selected < 0 || !state.slices[selected]) return;
 
@@ -1142,7 +1269,15 @@ function wireChart(){
   if(!svg) return;
 
   svg.addEventListener("mousedown", function(e){
-    if(e.target.closest(".lbl")) return;   // labels are click-to-rename, not drag
+    var lblHit = e.target.closest(".lbl");
+    if(lblHit){
+      // Click renames; a drag past a few px moves the label instead.
+      labelWasDragged = false;          // fresh gesture
+      var idx0 = +lblHit.dataset.idx;
+      drag = { type:"maybe-label", idx:idx0, x:e.clientX, y:e.clientY, moved:false };
+      e.preventDefault();
+      return;
+    }
     var handle = e.target.closest(".edge-handle");
     var path = e.target.closest(".slice-path");
 
@@ -1180,6 +1315,7 @@ function wireChart(){
 
   // Click a label on the chart to rename that slice in place.
   svg.addEventListener("click", function(e){
+    if(labelWasDragged){ labelWasDragged = false; return; }
     var lbl = e.target.closest(".lbl");
     if(lbl) editLabel(+lbl.dataset.idx, lbl);
   });
@@ -1200,8 +1336,38 @@ function wireChart(){
   });
 }
 
+var labelWasDragged = false;
+
 document.addEventListener("mousemove", function(e){
   if(!drag || !GEO) return;
+
+  if(drag.type === "maybe-label"){
+    if(Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 4){
+      drag.type = "label"; labelWasDragged = true;
+    } else return;
+  }
+
+  if(drag.type === "label"){
+    var p = svgPoint(e);
+    var s = state.slices[drag.idx];
+    if(!s) return;
+
+    // Keep labels out of the pie: push the point onto the circle's edge,
+    // plus a small margin, along the direction it came from.
+    var dx = p.x - GEO.cx, dy = p.y - GEO.cy;
+    var dist = Math.sqrt(dx*dx + dy*dy);
+    var keepOut = GEO.R + 16 + (+state.explode || 0);
+    if(dist < keepOut){
+      if(dist < 0.001){ dx = 1; dy = 0; dist = 1; }
+      p.x = GEO.cx + (dx / dist) * keepOut;
+      p.y = GEO.cy + (dy / dist) * keepOut;
+    }
+    // Stay inside the canvas.
+    s.lx = Math.max(6, Math.min(GEO.W - 6, p.x));
+    s.ly = Math.max(6, Math.min(GEO.H - 6, p.y));
+    draw();
+    return;
+  }
 
   if(drag.type === "maybe-explode"){
     if(Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 6){
@@ -1239,7 +1405,9 @@ document.addEventListener("mousemove", function(e){
 
 document.addEventListener("mouseup", function(){
   if(drag){
-    if(drag.type === "resize" || drag.type === "explode"){ renderSlices(); autosave(); }
+    if(drag.type === "resize" || drag.type === "explode" || drag.type === "label"){
+      renderSlices(); autosave();
+    }
     drag = null;
   }
 });
@@ -1429,6 +1597,11 @@ function openPresets(){
 function initEvents(){
   ["title","subtitle","centerText","prefix","suffix","labelMode","valMode","bg","fg","strokeCol"]
     .forEach(function(k){ bind(k, k, "str"); });
+  $("#labelMode").addEventListener("change", function(){
+    // Hand-placed callouts are meaningless in the other modes.
+    state.slices.forEach(function(s){ delete s.lx; delete s.ly; });
+    draw(); autosave();
+  });
   ["hole","pad","start","size","decimals","fontSize","stroke","explode","smallPct","dir"]
     .forEach(function(k){ bind(k, k, "num"); });
   ["legend","hideSmall","transparent"].forEach(function(k){ bind(k, k, "bool"); });
@@ -1554,6 +1727,7 @@ function initEvents(){
   renderPaletteUI();
   initRibbon();
   initEvents();
+  pushHistory(true);   // baseline so the first Ctrl+Z has somewhere to go
   refreshAll();
 })();
 </script>
