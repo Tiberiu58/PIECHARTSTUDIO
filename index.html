@@ -218,6 +218,31 @@ body.sb-open .stage{padding-left:242px}
 #confirmBox .row{justify-content:flex-end}
 @media(max-width:1000px){.rb-f .pct{display:none}}
 @media(max-width:860px){.rb-f input[type=range]{max-width:56px}}
+/* Any viewport where the ribbon rows are wider than the screen: let them scroll
+   sideways instead of clipping. Without this the export buttons are simply
+   unreachable — there is no other way to trigger them. */
+@media(max-width:900px){
+  .rb-top, .rb-panel.on{overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch;
+    scrollbar-width:none}
+  .rb-top::-webkit-scrollbar, .rb-panel.on::-webkit-scrollbar{display:none}
+  .rb-top .spacer{flex:none; min-width:6px}      /* a growing spacer cannot work in a scroller */
+  .rb-top button, .rb-panel.on button, .rb-tabs button{min-height:38px}
+}
+/* Phones: shorten labels and put the primary action beside the tabs so that
+   something actionable is on screen before any swiping. */
+@media(max-width:640px){
+  .bn-long{display:none}                          /* "Pie Chart Studio" -> "Studio", "Download PNG" -> "PNG" */
+  .rb-tab{padding:4px 8px}
+  .rb-top{gap:6px; padding-left:8px; padding-right:8px}
+  .rb-top .brand{order:1}
+  .rb-top .rb-tabs{order:2}
+  .rb-top #btnPng{order:3}
+  .rb-top .spacer{order:4}
+  .rb-top #btnData{order:5}
+  .rb-top #btnSvg{order:6}
+  .rb-top #btnCsv{order:7}
+  .rb-top #btnTheme{order:8}
+}
 .hint{font-size:11px;color:var(--muted);margin-top:6px}
 .total{font-size:12px;color:var(--muted);margin-top:8px;display:flex;justify-content:space-between}
 dialog{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:0;padding:18px;max-width:560px;width:92%}
@@ -233,7 +258,7 @@ code{background:var(--panel2);padding:1px 4px;border-radius:0}
 <div id="ribbon">
   <div class="rb-top">
     <div class="brand">
-      <button id="brandBtn" aria-haspopup="true" aria-expanded="false">Pie Chart Studio <span class="caret">&#9660;</span></button>
+      <button id="brandBtn" aria-haspopup="true" aria-expanded="false"><span class="bn-long">Pie Chart </span>Studio <span class="caret">&#9660;</span></button>
       <div class="brand-menu" id="brandMenu" hidden>
         <a data-page="studio">Studio<span class="mi-sub">Build your chart</span></a>
         <a data-page="howto">How To<span class="mi-sub">Step-by-step guide</span></a>
@@ -248,7 +273,7 @@ code{background:var(--panel2);padding:1px 4px;border-radius:0}
     </div>
     <div class="spacer"></div>
     <button id="btnData">Import / Paste data</button>
-    <button id="btnPng" class="primary">Download PNG</button>
+    <button id="btnPng" class="primary"><span class="bn-long">Download </span>PNG</button>
     <button id="btnSvg">SVG</button>
     <button id="btnCsv">CSV</button>
     <button id="btnTheme" class="ghost" title="Toggle editor theme">Theme</button>
@@ -394,6 +419,7 @@ code{background:var(--panel2);padding:1px 4px;border-radius:0}
     <li><strong>Drag a slice outward</strong> to pull it out of the pie for emphasis.</li>
     <li><strong>Click a label</strong> to rename it in place. Press <kbd>Enter</kbd> to confirm or <kbd>Esc</kbd> to cancel.</li>
     <li><strong>Drag a label</strong> to move it anywhere around the chart. Labels cannot be dropped on top of the pie itself.</li>
+    <li><strong>Split in two</strong>, in <em>Slice Tools</em>, cuts the selected slice into two equal halves. The total stays the same, so the rest of the chart does not move.</li>
     <li>Press <kbd>Delete</kbd> or <kbd>Backspace</kbd> to remove the selected slice.</li>
     <li>Press <kbd>Ctrl</kbd>+<kbd>Z</kbd> to undo and <kbd>Ctrl</kbd>+<kbd>Y</kbd> to redo.</li>
   </ul>
@@ -1482,6 +1508,7 @@ function renderSliceTab(){
     '<div class="rb-group">' +
       '<div class="rb-items">' +
         '<button class="rb-big" id="sfDup"><b>&#10697;</b>Duplicate</button>' +
+        '<button class="rb-big" id="sfSplit" title="Cut this slice into two equal halves"><b>&#9686;</b>Split in two</button>' +
         '<button class="rb-big" id="sfPin"' + ((s.lx === undefined) ? ' disabled style="opacity:.45"' : '') +
           ' title="Put the dragged label back where it belongs"><b>&#8617;</b>Reset label</button>' +
         '<button class="rb-big" id="sfDel"><b>&#128465;</b>Delete</button>' +
@@ -1531,6 +1558,17 @@ function renderSliceTab(){
   $("#sfDup").addEventListener("click", function(){
     state.slices.splice(selected+1, 0, {name:s.name+" copy", value:s.value, color:s.color, out:false});
     selectSlice(selected+1); autosave();
+  });
+  // Cut the slice into two equal halves. Unlike Duplicate this keeps the grand
+  // total fixed, so the rest of the chart does not move.
+  $("#sfSplit").addEventListener("click", function(){
+    var half = (+s.value||0) / 2;
+    s.value = half;
+    delete s.lx; delete s.ly;          // the old label spot no longer fits half a slice
+    state.slices.splice(selected+1, 0,
+      {name:s.name, value:half, color:s.color, out:s.out});
+    selectSlice(selected+1); autosave();
+    toast("Slice split into two halves.", "ok", 1200);
   });
   $("#sfPin").addEventListener("click", function(){
     delete s.lx; delete s.ly;
