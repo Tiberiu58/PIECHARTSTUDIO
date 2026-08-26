@@ -1803,14 +1803,20 @@ document.addEventListener("mousemove", function(e){
 
   if(drag.type === "resize"){
     var rel = angleFrom(svgPoint(e));
-    // angleFrom() wraps at 0/2PI, which falls right on the top of the chart.
-    // Comparing the raw values would make a boundary near 12 o'clock jump a
-    // whole turn as the pointer crosses the seam, pinning the slice at the
-    // clamp. Take the shortest way round instead, so the delta stays smooth.
-    var delta = rel - drag.boundary;
-    delta -= Math.PI * 2 * Math.round(delta / (Math.PI * 2));
-    var frac = delta / (Math.PI * 2);                      // share taken by slice a
+    // angleFrom() wraps at 0/2PI, which falls on the top of the chart, and the
+    // pair being resized can straddle that seam. Measure the sweep forward from
+    // slice a's own starting edge and keep it in [0, 2PI) so the value grows
+    // smoothly across the wrap instead of jumping a whole turn.
+    var TWO_PI = Math.PI * 2;
+    var delta = (rel - drag.boundary) % TWO_PI;
+    if(delta < 0) delta += TWO_PI;
     var maxFrac = drag.sum / drag.total;
+    // Past the far edge of the pair the pointer is behind slice a's start; send
+    // it to whichever end of the range it is nearer, rather than wrapping round.
+    if(delta / TWO_PI > maxFrac){
+      delta = (delta / TWO_PI - maxFrac < (1 - delta / TWO_PI)) ? maxFrac * TWO_PI : 0;
+    }
+    var frac = delta / TWO_PI;                             // share taken by slice a
     frac = Math.max(maxFrac * 0.02, Math.min(maxFrac * 0.98, frac));
     var aVal = frac * drag.total;
     drag.a.value = Math.round(aVal * 100) / 100;
