@@ -1693,9 +1693,13 @@ function wireChart(){
       var vis = state.slices.filter(function(s){ return (+s.value||0) > 0; });
       var vi = vis.indexOf(state.slices[+handle.dataset.idx]);
       var edge = handle.dataset.edge;
+      if(vis.length < 2) return;                        // nothing to trade value with
       var aIdx = (edge === "start") ? vi - 1 : vi;      // slice losing/gaining on the left
       var bIdx = (edge === "start") ? vi : vi + 1;      // ...on the right
-      if(aIdx < 0 || bIdx >= vis.length) return;        // outer edges of the ring aren't shared
+      // A pie is a closed ring: the first and last slices share the boundary at
+      // the top of the chart, so wrap instead of refusing the drag there.
+      if(aIdx < 0) aIdx = vis.length - 1;
+      if(bIdx >= vis.length) bIdx = 0;
       drag = {
         type:"resize",
         a: vis[aIdx], b: vis[bIdx],
@@ -1799,7 +1803,13 @@ document.addEventListener("mousemove", function(e){
 
   if(drag.type === "resize"){
     var rel = angleFrom(svgPoint(e));
-    var frac = (rel - drag.boundary) / (Math.PI * 2);      // share taken by slice a
+    // angleFrom() wraps at 0/2PI, which falls right on the top of the chart.
+    // Comparing the raw values would make a boundary near 12 o'clock jump a
+    // whole turn as the pointer crosses the seam, pinning the slice at the
+    // clamp. Take the shortest way round instead, so the delta stays smooth.
+    var delta = rel - drag.boundary;
+    delta -= Math.PI * 2 * Math.round(delta / (Math.PI * 2));
+    var frac = delta / (Math.PI * 2);                      // share taken by slice a
     var maxFrac = drag.sum / drag.total;
     frac = Math.max(maxFrac * 0.02, Math.min(maxFrac * 0.98, frac));
     var aVal = frac * drag.total;
