@@ -121,8 +121,21 @@ button.icon{padding:4px 8px;line-height:1}
 .edge-grab:hover{stroke:rgba(127,127,127,.18)}
 /* The chart owns its gestures: without this the browser treats a drag as a
    scroll or a pinch and the slice never moves. */
-#chartBox svg{touch-action:none}
-#chartBox svg *{touch-action:none}
+/* Only the interactive bits claim the gesture. Blanket touch-action:none on
+   the whole SVG also swallowed the downward swipe the browser uses for
+   pull-to-refresh, so the page could never be refreshed from the chart. */
+#chartBox svg{touch-action:auto}
+/* Boundary handles claim the gesture outright: dragging one is the whole
+   point and it has a large vertical component. */
+#chartBox svg .edge-grab,
+#chartBox svg .edge-handle{touch-action:none}
+/* Slices and labels cover most of the screen, so they must not swallow a
+   downward swipe: pan-y keeps pull-to-refresh and scrolling working while
+   still letting the app read horizontal drags. Their drags (explode, move a
+   label) start only after a few pixels, and preventDefault() in the move
+   handler takes the gesture from there. */
+#chartBox svg .slice-path,
+#chartBox svg .lbl{touch-action:pan-y}
 .lbl{cursor:text}
 .lbl:hover{text-decoration:underline}
 #lblEdit{position:absolute;z-index:60;font:inherit;font-weight:600;padding:3px 6px;
