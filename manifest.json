@@ -1,0 +1,20 @@
+{
+  "short_name": "Pie Chart",
+  "name": "Pie Chart Studio",
+  "description": "An offline capable pie and donut chart maker. Quick, no sign-up, watermark-free and minimalist.",
+  "display": "standalone",
+  "start_url": "/",
+  "scope": "/",
+  "theme_color": "#0f1115",
+  "background_color": "#ffffff",
+  "icons": [
+    { "src": "/favicon.ico", "sizes": "48x48", "type": "image/x-icon" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "screenshots": [
+    { "src": "/cover.png", "sizes": "1200x1200", "type": "image/png" },
+    { "src": "/preview.png", "sizes": "1200x630", "type": "image/png", "form_factor": "wide" }
+  ]
+}
