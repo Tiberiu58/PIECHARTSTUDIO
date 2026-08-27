@@ -2356,6 +2356,15 @@ function initEvents(){
   initEvents();
   pushHistory(true);   // baseline so the first Ctrl+Z has somewhere to go
   refreshAll();
+
+  // Register the service worker that makes "offline capable" literal. Wait for
+  // load so it never competes with the first paint, and treat any failure as a
+  // non-event: the app works exactly as before without it.
+  if("serviceWorker" in navigator && location.protocol !== "file:"){
+    window.addEventListener("load", function(){
+      navigator.serviceWorker.register("/sw.js")["catch"](function(){});
+    });
+  }
 })();
 </script>
 </body>
