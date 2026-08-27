@@ -208,27 +208,65 @@ button.icon{padding:4px 8px;line-height:1}
 /* Any viewport where the ribbon rows are wider than the screen: let them scroll
    sideways instead of clipping. Without this the export buttons are simply
    unreachable - there is no other way to trigger them. */
-@media(max-width:900px){
+@media(max-width:900px) and (min-height:521px){
   .rb-top, .rb-panel.on{overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch;
     scrollbar-width:none}
   .rb-top::-webkit-scrollbar, .rb-panel.on::-webkit-scrollbar{display:none}
   .rb-top .spacer{flex:none; min-width:6px}      /* a growing spacer cannot work in a scroller */
   .rb-top button, .rb-panel.on button, .rb-tabs button{min-height:38px}
 }
-/* Phones: shorten labels and put the primary action beside the tabs so that
-   something actionable is on screen before any swiping. */
-@media(max-width:640px){
-  .bn-long{display:none}                          /* "Pie Chart Studio" -> "Studio", "Download PNG" -> "PNG" */
-  .rb-tab{padding:4px 8px}
-  .rb-top{gap:6px; padding-left:8px; padding-right:8px}
-  .rb-top .brand{order:1}
-  .rb-top .rb-tabs{order:2}
-  .rb-top #btnPng{order:3}
-  .rb-top .spacer{order:4}
-  .rb-top #btnData{order:5}
-  .rb-top #btnSvg{order:6}
-  .rb-top #btnCsv{order:7}
-  .rb-top #btnTheme{order:8}
+/* ---------------------------------------------------------------
+   Phones. The ribbon is dropped entirely and the chart takes the
+   whole screen below the header. Desktop is untouched.
+
+   A phone is matched two ways: narrow (portrait) OR short (landscape,
+   where the screen is wide but no taller than a phone). Matching on
+   width alone would let the desktop layout back in the moment the
+   device is turned.
+   --------------------------------------------------------------- */
+@media(max-width:640px), (max-width:950px) and (max-height:520px){
+  .bn-long{display:none}                 /* "Pie Chart Studio" -> "Studio" */
+
+  /* No ribbon body, no tabs, no legend toggle. */
+  #ribbon .rb-body{display:none !important}
+  .rb-tabs{display:none !important}
+  #legendBtn{display:none !important}
+
+  /* Header: brand on the left, actions on the right, no scrolling. */
+  #ribbon{position:sticky;top:0;z-index:40}
+  .rb-top{overflow:visible;gap:6px;padding:6px 8px;flex-wrap:nowrap}
+  .rb-top .spacer{flex:1 1 auto;min-width:0}
+  .rb-top button{min-height:40px;flex:none}
+  .rb-top .brand{flex:none}
+
+  /* The chart area is one white sheet from the header to the bottom of
+     the screen, with the chart centred in it. */
+  .stage{padding:0;
+    height:calc(100vh - var(--chromeH,52px));
+    height:calc(100dvh - var(--chromeH,52px));   /* dvh dodges the URL bar */
+    background:#fff;display:flex;align-items:center;justify-content:center;
+    overflow:hidden;gap:0}
+  #chartWrap{margin:0;max-width:100%;width:100%;display:flex;
+    align-items:center;justify-content:center;min-height:0}
+  #chartBox{width:100%;display:flex;align-items:center;justify-content:center;min-height:0}
+  /* Keep the height cap fitStage() computed; a percentage here would not
+     constrain anything inside a flex parent with no fixed height. */
+  #chartBox svg{max-width:100%;max-height:var(--chartMaxH,100%);height:auto}
+}
+
+/* Portrait only: just the two primary actions. They are hidden rather
+   than removed so turning the phone brings them straight back. */
+@media(max-width:640px) and (orientation:portrait){
+  .rb-top #btnSvg, .rb-top #btnCsv, .rb-top #btnTheme{display:none}
+}
+
+/* Landscape phone: the full set of actions appears, the way a phone
+   calculator reveals its extra keys when the device is turned. */
+@media(max-width:950px) and (max-height:520px){
+  .rb-top{gap:5px;padding:4px 8px}
+  .rb-top button{min-height:34px;font-size:12px;padding:4px 9px}
+  .stage{height:calc(100vh - var(--chromeH,44px));
+    height:calc(100dvh - var(--chromeH,44px))}
 }
 .hint{font-size:11px;color:var(--muted);margin-top:6px}
 .total{font-size:12px;color:var(--muted);margin-top:8px;display:flex;justify-content:space-between}
@@ -1557,10 +1595,12 @@ function fitStage(){
   document.documentElement.style.setProperty("--chromeH", chrome + "px");
   var cb = $("#chartBox");
   if(cb) cb.style.setProperty("--chartMaxH", Math.max(160, window.innerHeight - chrome - 34) + "px");
-  // Leave room for the legend toggle at the edge of the stage.
+  // Leave room for the legend toggle at the edge of the stage. On phones the
+  // toggle is hidden and the chart owns the full width, so reserve nothing.
   var wrap = document.getElementById("chartWrap");
   if(wrap){
-    wrap.style.maxWidth = "calc(100% - 110px)";
+    var phone = window.matchMedia("(max-width:640px), (max-width:950px) and (max-height:520px)").matches;
+    wrap.style.maxWidth = phone ? "100%" : "calc(100% - 110px)";
   }
 }
 window.addEventListener("resize", fitStage);
