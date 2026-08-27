@@ -69,6 +69,7 @@ body{margin:0;font:14px/1.5 Aptos,Calibri,"Segoe UI",system-ui,-apple-system,Ari
 .stage{padding:14px 12px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
   gap:12px;height:calc(100vh - var(--chromeH,120px));overflow:hidden}
 #chartWrap{position:relative;display:inline-block;max-width:calc(100% - 110px);margin-left:102px}
+#phoneBar{display:none}
 /* Legend toggle: sits outside the exported canvas, level with the legend. */
 #legendBtn{position:absolute;right:calc(100% + 10px);transform:translateY(-50%);
   white-space:nowrap;font-size:12px;padding:5px 11px;line-height:1.2;
@@ -261,6 +262,22 @@ button.icon{padding:4px 8px;line-height:1}
     max-height:var(--chartMaxH,100%);object-fit:contain}
   /* A fingertip is far wider than a mouse pointer. */
   .edge-grab{stroke-width:34}
+
+  /* Slice actions, pinned to the bottom of the white sheet. */
+  #phoneBar{display:flex !important;gap:8px;position:fixed;left:0;right:0;
+    bottom:0;z-index:45;padding:8px 10px calc(8px + env(safe-area-inset-bottom,0px));
+    background:rgba(255,255,255,.96);border-top:1px solid #e3e6ec}
+  #phoneBar button{flex:1;min-height:46px;font-size:14px;font-weight:600;
+    border:1px solid #cbd2dd;background:#fff;color:#111;cursor:pointer;padding:6px 4px}
+  #phoneBar button:disabled{opacity:.4}
+  #phoneBar #pbColor{position:relative}
+  #phoneBar #pbColor .sw{display:inline-block;width:13px;height:13px;margin-left:7px;
+    border:1px solid rgba(0,0,0,.28);vertical-align:-2px}
+  #pbColorInput{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;
+    left:50%;bottom:44px}
+  /* Keep the chart clear of the bar. box-sizing is border-box globally, so
+     this padding comes out of the height rather than adding to it. */
+  .stage{padding-bottom:calc(66px + env(safe-area-inset-bottom,0px))}
 }
 
 /* Portrait only: just the two primary actions. They are hidden rather
@@ -549,6 +566,14 @@ code{background:var(--panel2);padding:1px 4px;border-radius:0}
     <div id="chartWrap">
       <div id="chartBox"></div>
       <button id="legendBtn" type="button"></button>
+    </div>
+    <!-- Phone-only slice actions. Hidden everywhere else; the ribbon covers
+         these on desktop. -->
+    <div id="phoneBar" hidden>
+      <button id="pbAdd" type="button">+ Slice</button>
+      <button id="pbColor" type="button" disabled>Colour</button>
+      <button id="pbDel" type="button" disabled>Delete</button>
+      <input type="color" id="pbColorInput" tabindex="-1" aria-hidden="true">
     </div>
   </main>
 </div>
@@ -946,9 +971,9 @@ function buildSVG(){
   // one on each side instead of shrinking the pie into an unreadable disc.
   // The canvas may grow only until it hits 16:10 - past that, labels wrap.
   // Callout labels need wide side margins, which on a phone squeeze the pie to
-  // nothing. The legend below already names every slice, so drop the callouts
-  // and give the width back to the chart.
+  // nothing. Rather than losing the names, phones draw them inside the slices.
   var isCallout = (S.labelMode === "callout") && !PHONE;
+  var phoneInside = PHONE && S.labelMode === "callout";
   var CHAR_W = (+S.fontSize) * 0.56;   // ~0.56em per char for the serif stack
   var ELBOW = 48;
   var sideRoom = 0, wrapChars = 0;
@@ -988,8 +1013,8 @@ function buildSVG(){
     // Two columns unless the canvas is genuinely narrow, and rows tall enough
     // to read at arm's length.
     legendCols = legendOn ? (W >= 560 ? 2 : 1) : 2;
-    legendGap  = 46;
-    legendFS   = Math.max(20, Math.round(size * 0.045));
+    legendGap  = 32;                                   // was 46, 30% tighter
+    legendFS   = Math.max(14, Math.round(size * 0.0315));
   } else {
     legendCols = legendOn ? Math.max(1, Math.min(4, Math.floor(W / 320))) : 2;
     legendGap  = Math.min(40, Math.round(22 + Math.max(0, (W - 640)) * 0.014));
@@ -1112,13 +1137,17 @@ function buildSVG(){
   if(S.labelMode !== "none"){
     var minFrac = S.hideSmall ? ((+S.smallPct || 0) / 100) : 0;
 
-    if(S.labelMode === "inside"){
+    if(S.labelMode === "inside" || phoneInside){
+      // The landscape canvas is smaller in user units, so scale a little harder
+      // there to land at a comparable size on screen.
+      var insideFS = PHONE ? Math.max(13, Math.round(size * (LAND ? 0.055 : 0.042)))
+                           : +S.fontSize;
       segs.forEach(function(g){
         if(g.frac < minFrac) return;
         var off = g.s.out ? (+S.explode || 0) : 0;
         var rr = rInner > 0 ? (rInner + R) / 2 : R * 0.64;
         var p = polar(cx + Math.cos(g.mid)*off, cy + Math.sin(g.mid)*off, rr, g.mid);
-        out.push(textEl(labelText(g.frac, g.s, 0), p[0], p[1], +S.fontSize, contrast(g.s.color), "middle",
+        out.push(textEl(labelText(g.frac, g.s, 0), p[0], p[1], insideFS, contrast(g.s.color), "middle",
                         S.slices.indexOf(g.s)));
       });
     } else {
@@ -1231,6 +1260,25 @@ function draw(){
   renderInspector();
   renderSliceTab();
   placeLegendBtn();
+  syncPhoneBar();
+}
+
+// Colour and Delete only mean something with a slice selected; the swatch
+// shows which colour is about to change.
+function syncPhoneBar(){
+  var bar = document.getElementById("phoneBar");
+  if(!bar) return;
+  bar.hidden = false;                       // CSS decides whether it shows
+  var has = selected >= 0 && !!state.slices[selected];
+  var del = document.getElementById("pbDel"),
+      col = document.getElementById("pbColor");
+  if(del) del.disabled = !has;
+  if(col){
+    col.disabled = !has;
+    col.innerHTML = has
+      ? 'Colour <i class="sw" style="background:' + escAttr(state.slices[selected].color) + '"></i>'
+      : "Colour";
+  }
 }
 
 // Anchor the legend toggle to the left of the chart, vertically centred on the
@@ -2161,6 +2209,36 @@ function initEvents(){
                         color: nextColor(state.slices.length), out:false });
     renderSlices(); draw(); autosave();
   });
+
+  /* ---- phone slice actions ---- */
+  var pbAdd = $("#pbAdd"), pbDel = $("#pbDel"),
+      pbColor = $("#pbColor"), pbColorInput = $("#pbColorInput");
+  if(pbAdd){
+    pbAdd.addEventListener("click", function(){
+      // Add the slice and select it, so Colour and Delete act on what was
+      // just created without a second tap.
+      state.slices.push({ name:"Slice " + (state.slices.length + 1), value:10,
+                          color: nextColor(state.slices.length), out:false });
+      selectSlice(state.slices.length - 1);
+      updateTotals(); autosave();
+    });
+    pbDel.addEventListener("click", function(){
+      if(selected < 0 || !state.slices[selected]) return;
+      state.slices.splice(selected, 1);
+      selected = -1;
+      draw(); updateTotals(); autosave();
+    });
+    pbColor.addEventListener("click", function(){
+      if(selected < 0 || !state.slices[selected]) return;
+      pbColorInput.value = state.slices[selected].color;
+      pbColorInput.click();              // opens the OS colour picker
+    });
+    pbColorInput.addEventListener("input", function(){
+      if(selected < 0 || !state.slices[selected]) return;
+      state.slices[selected].color = this.value;
+      draw(); autosave();
+    });
+  }
   var bc = $("#btnClear");
   if(bc) bc.addEventListener("click", function(){
     askConfirm("Clear the chart? This removes every slice along with the title, subtitle and center text.").then(function(ok){
