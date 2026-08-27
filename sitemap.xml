@@ -1,8 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
   <url>
     <loc>https://piechart.studio/</loc>
-    <changefreq>monthly</changefreq>
+    <lastmod>2026-08-27</lastmod>
+    <changefreq>weekly</changefreq>
     <priority>1.0</priority>
+    <image:image>
+      <image:loc>https://piechart.studio/cover.png</image:loc>
+      <image:title>Pie Chart Studio</image:title>
+      <image:caption>A donut chart with six labelled slices, made in Pie Chart Studio</image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://piechart.studio/preview.png</image:loc>
+      <image:title>Pie Chart Studio: free pie and donut chart maker</image:title>
+    </image:image>
   </url>
 </urlset>
