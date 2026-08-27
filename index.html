@@ -668,7 +668,7 @@ var DEFAULTS = {
   slices: [],
   title:"", subtitle:"", centerText:"",
   hole:45, pad:0, round:0, start:0, size:640, dir:1,
-  labelMode:"callout", valMode:"pct", decimals:1, fontSize:14,
+  labelMode:"callout", valMode:"both", decimals:1, fontSize:14,
   font:"Calibri", legend:true, hideSmall:false, smallPct:3,
   palette:"Studio", bg:"#ffffff", fg:"#111111", transparent:false,
   stroke:2, strokeCol:"#ffffff", explode:12
@@ -749,6 +749,15 @@ function autoload(){
       // a chart running anticlockwise with no control left to change it back.
       s.pad = 0; s.dir = 1;
       delete s.prefix; delete s.suffix;
+      // Labels now show the value with the percentage beside it. Move existing
+      // charts over once; the flag means a later switch back to percentage
+      // only is respected rather than being undone on every load.
+      try{
+        if(!localStorage.getItem("pcs_valmode_both")){
+          if(s.valMode === "pct") s.valMode = "both";
+          localStorage.setItem("pcs_valmode_both", "1");
+        }
+      }catch(e){ if(s.valMode === "pct") s.valMode = "both"; }
       state = s; return true;
     }
   }catch(e){}
@@ -1154,14 +1163,32 @@ function buildSVG(){
 
   if(S.labelMode !== "none"){
     var minFrac = S.hideSmall ? ((+S.smallPct || 0) / 100) : 0;
+    // Inside labels have only the slice's own arc to sit in. Now that labels
+    // carry the value as well as the percentage they are much wider, so on a
+    // phone a sliver of a slice would render its label straight across its
+    // neighbours. Drop the ones that cannot fit; the legend still names them.
+    // Rather than guess a percentage, work out the arc each label needs. A
+    // label sits along the mid-band, so a slice can hold it only if its arc
+    // there is at least as long as the text.
 
     if(S.labelMode === "inside" || phoneInside){
       // The landscape canvas is smaller in user units, so scale a little harder
       // there to land at a comparable size on screen.
       var insideFS = PHONE ? Math.max(13, Math.round(size * (LAND ? 0.055 : 0.042)))
                            : +S.fontSize;
+      var bandR = rInner > 0 ? (rInner + R) / 2 : R * 0.64;
       segs.forEach(function(g){
         if(g.frac < minFrac) return;
+        if(PHONE){
+          // Longest line of the label, roughly 0.55em per character.
+          var lines = labelText(g.frac, g.s, 0).split(String.fromCharCode(10));
+          var widest = 0;
+          for(var li = 0; li < lines.length; li++)
+            if(lines[li].length > widest) widest = lines[li].length;
+          var needed = widest * insideFS * 0.55;
+          var arc = bandR * Math.abs(g.a1 - g.a0);
+          if(arc < needed) return;        // the legend still names this slice
+        }
         var off = g.s.out ? (+S.explode || 0) : 0;
         var rr = rInner > 0 ? (rInner + R) / 2 : R * 0.64;
         var p = polar(cx + Math.cos(g.mid)*off, cy + Math.sin(g.mid)*off, rr, g.mid);
