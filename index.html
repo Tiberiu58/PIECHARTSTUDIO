@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pie Chart Maker — No Sign-Up, Works Offline</title>
+<title>Pie Chart Maker: No Sign-Up, Works Offline</title>
 <meta name="description" content="Make a pie or donut chart without an account. No sign-up, no watermark, works offline. Click a slice to edit, drag to resize, export PNG, SVG or CSV.">
 <link rel="canonical" href="https://piechart.studio/">
 <meta name="theme-color" content="#0f1115">
@@ -11,14 +11,14 @@
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://piechart.studio/">
 <meta property="og:site_name" content="Pie Chart Studio">
-<meta property="og:title" content="Pie Chart Maker — No Sign-Up, Works Offline">
+<meta property="og:title" content="Pie Chart Maker: No Sign-Up, Works Offline">
 <meta property="og:description" content="No account, no watermark, works offline. Click a slice to edit, drag to resize, export PNG or SVG.">
 <meta property="og:image" content="https://piechart.studio/preview.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Pie Chart Maker — No Sign-Up, Works Offline">
+<meta name="twitter:title" content="Pie Chart Maker: No Sign-Up, Works Offline">
 <meta name="twitter:description" content="No account, no watermark, works offline. Click a slice to edit, drag to resize, export PNG or SVG.">
 <meta name="twitter:image" content="https://piechart.studio/preview.png">
 
@@ -65,11 +65,12 @@ body{margin:0;font:14px/1.5 Aptos,Calibri,"Segoe UI",system-ui,-apple-system,Ari
 .side{background:var(--panel);border-right:1px solid var(--line);padding:16px;overflow:auto}
 .stage{padding:14px 12px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
   gap:12px;height:calc(100vh - var(--chromeH,120px));overflow:hidden}
-#chartWrap{position:relative;display:inline-block;max-width:calc(100% - 110px);margin-right:102px}
+#chartWrap{position:relative;display:inline-block;max-width:calc(100% - 110px);margin-left:102px}
 /* Legend toggle: sits outside the exported canvas, level with the legend. */
-#legendBtn{position:absolute;left:calc(100% + 8px);transform:translateY(-50%);
-  white-space:nowrap;font-size:11.5px;padding:4px 9px;line-height:1.2;
-  background:var(--panel);border:1px solid var(--line);color:var(--muted);cursor:pointer}
+#legendBtn{position:absolute;right:calc(100% + 10px);transform:translateY(-50%);
+  white-space:nowrap;font-size:12px;padding:5px 11px;line-height:1.2;
+  background:var(--panel);border:1px solid var(--line);color:var(--text);cursor:pointer;
+  box-shadow:0 1px 3px rgba(0,0,0,.14)}
 #legendBtn:hover{border-color:var(--accent);color:var(--text)}
 #legendBtn[hidden]{display:none}
 .card{background:var(--panel2);border:1px solid var(--line);border-radius:0;padding:12px;margin-bottom:14px}
@@ -111,6 +112,9 @@ button.icon{padding:4px 8px;line-height:1}
 .slice-path:hover{opacity:.86}
 .slice-path.is-sel{filter:brightness(1.14) drop-shadow(0 0 6px rgba(0,0,0,.45))}
 .edge-handle{cursor:ew-resize}
+/* Invisible but thick: the whole boundary line is a drag target. */
+.edge-grab{stroke:transparent;stroke-width:16;cursor:ew-resize;fill:none}
+.edge-grab:hover{stroke:rgba(127,127,127,.18)}
 .lbl{cursor:text}
 .lbl:hover{text-decoration:underline}
 #lblEdit{position:absolute;z-index:60;font:inherit;font-weight:600;padding:3px 6px;
@@ -198,7 +202,7 @@ button.icon{padding:4px 8px;line-height:1}
 @media(max-width:860px){.rb-f input[type=range]{max-width:56px}}
 /* Any viewport where the ribbon rows are wider than the screen: let them scroll
    sideways instead of clipping. Without this the export buttons are simply
-   unreachable — there is no other way to trigger them. */
+   unreachable - there is no other way to trigger them. */
 @media(max-width:900px){
   .rb-top, .rb-panel.on{overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch;
     scrollbar-width:none}
@@ -375,16 +379,16 @@ code{background:var(--panel2);padding:1px 4px;border-radius:0}
   <h1>How to make a pie chart</h1>
   <p class="lede">Pie Chart Studio runs entirely in your browser. Nothing is uploaded, there is no account, and your work is saved locally as you go.</p>
 
-  <h3>1. Enter your data</h3>
+  <h2>1. Enter your data</h2>
   <p>Click <strong>Import / Paste data</strong> and paste one slice per line as <code>Name, Value</code>. You can copy straight out of Excel or Google Sheets:</p>
   <ul>
     <li>Commas, tabs, semicolons and colons all work as separators.</li>
-    <li>Values can be money, percentages, shares or plain numbers &mdash; keep every row in the same unit.</li>
+    <li>Values can be money, percentages, shares or plain numbers - keep every row in the same unit.</li>
     <li>Both <code>1,250.50</code> and <code>12.500,75</code> number formats are read correctly.</li>
   </ul>
   <p>You can also load a <code>.csv</code> file, or skip the import and press <strong>+ Add slice</strong> to build the chart by hand.</p>
 
-  <h3>2. Edit directly on the chart</h3>
+  <h2>2. Edit directly on the chart</h2>
   <p>The chart itself is the editor. There is no long list of form fields to hunt through:</p>
   <ul>
     <li><strong>Click a slice</strong> to select it. A contextual <em>Slice Tools</em> tab appears with its name, value, colour, border and position.</li>
@@ -397,31 +401,31 @@ code{background:var(--panel2);padding:1px 4px;border-radius:0}
     <li>Press <kbd>Ctrl</kbd>+<kbd>Z</kbd> to undo and <kbd>Ctrl</kbd>+<kbd>Y</kbd> to redo.</li>
   </ul>
 
-  <h3>3. Change the look</h3>
+  <h2>3. Change the look</h2>
   <p>The ribbon at the top is grouped like a familiar office app:</p>
   <ul>
-    <li><strong>Home</strong> &mdash; add slices, set the title and subtitle, pick a colour palette.</li>
-    <li><strong>Design</strong> &mdash; donut hole, slice gaps, start angle, direction, canvas size, background and border.</li>
-    <li><strong>Labels</strong> &mdash; label placement, percentages or raw values, decimals, font size, legend.</li>
+    <li><strong>Home</strong> - add slices, set the title and subtitle, pick a colour palette.</li>
+    <li><strong>Design</strong> - donut hole, slice gaps, start angle, direction, canvas size, background and border.</li>
+    <li><strong>Labels</strong> - label placement, percentages or raw values, decimals, font size, legend.</li>
   </ul>
   <p>To turn a pie into a donut chart, drag the <strong>Hole</strong> slider in the Design tab. Add <strong>Center text</strong> on the Home tab to put a total in the middle.</p>
 
-  <h3>4. Export</h3>
+  <h2>4. Export</h2>
   <p><strong>Download PNG</strong> gives you a raster image at twice the on-screen size, ready for a slide deck or a document. <strong>SVG</strong> gives you a vector file that stays sharp at any size and can be edited later in Illustrator, Figma or Inkscape.</p>
   <p>Tick <strong>Transparent</strong> in the Design tab if you want the chart to sit on a coloured background.</p>
 
-  <h3>Why use this instead of Canva or Google Charts?</h3>
+  <h2>Why use this instead of Canva or Google Charts?</h2>
   <p>Most chart tools online want something from you before they draw anything: an account, an email address, a subscription for the export without a watermark, or a live connection to their servers. Pie Chart Studio is deliberately the opposite.</p>
   <ul>
     <li><strong>No sign-up and no account.</strong> Open the page and start. Nothing to register, no email to confirm, no free trial that expires.</li>
     <li><strong>No watermark.</strong> Exports are clean at any size, and the charts are yours to use commercially.</li>
     <li><strong>Works offline.</strong> Once loaded, the page needs no connection. Save it to disk and it keeps working on a plane or behind a locked-down office network.</li>
     <li><strong>Your data stays with you.</strong> Figures are never uploaded, which matters when the numbers are financial, medical or under NDA.</li>
-    <li><strong>One job, done properly.</strong> No sprawling design suite to learn &mdash; just pie and donut charts, edited by clicking the chart itself.</li>
+    <li><strong>One job, done properly.</strong> No sprawling design suite to learn - just pie and donut charts, edited by clicking the chart itself.</li>
   </ul>
   <p>The trade-off is honest: if you need bar charts, line graphs, team collaboration or cloud sync, a full design suite will serve you better. If you need a clean pie chart in under a minute, this is faster.</p>
 
-  <h3>Saving your work</h3>
+  <h2>Saving your work</h2>
   <p>Your current chart is saved automatically in this browser, so closing the tab will not lose it. Use <strong>Save</strong> to keep several named charts and <strong>Load</strong> to bring one back. Because storage is local to your browser, saved charts do not follow you to another device.</p>
 
   <button class="back" data-page="studio">&larr; Back to the editor</button>
@@ -462,7 +466,7 @@ code{background:var(--panel2);padding:1px 4px;border-radius:0}
   <p>Resizing moves value between the two slices either side of the edge you are dragging. That keeps the total fixed so the rest of the chart does not shift under your cursor while you work. To change the total instead, type a new number in the value box.</p>
 
   <div class="q">My percentages do not add up to 100. Why?</div>
-  <p>Percentages are calculated from the values you entered, so they always reflect the real total. If the numbers look wrong, check that every row uses the same unit &mdash; mixing currency with percentages makes one slice dominate the chart.</p>
+  <p>Percentages are calculated from the values you entered, so they always reflect the real total. If the numbers look wrong, check that every row uses the same unit - mixing currency with percentages makes one slice dominate the chart.</p>
 
   <div class="q">One slice is tiny and its label is unreadable. What can I do?</div>
   <p>Turn on <strong>Hide &lt;</strong> in the Labels tab to suppress labels on very small slices, and rely on the legend instead. You can also drag individual labels to a clearer spot.</p>
@@ -486,7 +490,8 @@ code{background:var(--panel2);padding:1px 4px;border-radius:0}
 
 <div class="wrap">
   <main class="stage">
-    <h1 class="sr-only">Free pie chart maker &mdash; create pie and donut charts online, no sign-up</h1>
+    <h1 class="sr-only">Free pie chart maker - Offline pie and donut charts maker no sign-up</h1>
+    <h2 class="sr-only">Build a pie or donut chart in your browser and export it as PNG, SVG or CSV</h2>
     <div id="chartWrap">
       <div id="chartBox"></div>
       <button id="legendBtn" type="button"></button>
@@ -501,7 +506,7 @@ code{background:var(--panel2);padding:1px 4px;border-radius:0}
     <button data-tab="file">CSV file</button>
   </div>
   <div id="tab-paste">
-    <p class="hint" style="margin-top:0">One slice per line: <code>Name, Value</code>. Comma, tab or semicolon all work &mdash; paste straight from Excel.</p>
+    <p class="hint" style="margin-top:0">One slice per line: <code>Name, Value</code>. Comma, tab or semicolon all work - paste straight from Excel.</p>
     <textarea id="pasteBox" placeholder="Apple, 25&#10;Microsoft, 20&#10;Nvidia, 15&#10;S&amp;P 500 ETF, 30&#10;Cash, 10"></textarea>
   </div>
   <div id="tab-file" hidden>
@@ -530,7 +535,7 @@ code{background:var(--panel2);padding:1px 4px;border-radius:0}
   <div class="row" style="margin-top:14px;justify-content:space-between">
     <div class="row" style="gap:8px">
       <button id="projSave">Save to file</button>
-      <button id="projOpen">Open file&hellip;</button>
+      <button id="projOpen">Open file...</button>
     </div>
     <button id="presetClose" class="primary">Close</button>
   </div>
@@ -734,7 +739,7 @@ function updateTotals(){
   var rows = listBox.children;
   state.slices.forEach(function(s, i){
     var el = rows[i] && rows[i].querySelector(".pct");
-    if(el) el.textContent = total ? ((+s.value||0)/total*100).toFixed(1) + "%" : "—";
+    if(el) el.textContent = total ? ((+s.value||0)/total*100).toFixed(1) + "%" : "-";
   });
 }
 
@@ -877,7 +882,7 @@ function buildSVG(){
 
   // Callout labels sit outside the circle; widen the canvas to fit the longest
   // one on each side instead of shrinking the pie into an unreadable disc.
-  // The canvas may grow only until it hits 16:10 — past that, labels wrap.
+  // The canvas may grow only until it hits 16:10 - past that, labels wrap.
   var isCallout = (S.labelMode === "callout");
   var CHAR_W = (+S.fontSize) * 0.56;   // ~0.56em per char for the serif stack
   var ELBOW = 48;
@@ -952,7 +957,8 @@ function buildSVG(){
   data.forEach(function(s){
     var frac = (+s.value) / total;
     var sweep = frac * Math.PI * 2 * dir;
-    segs.push({ s:s, frac:frac, a0:acc, a1:acc + sweep, mid:acc + sweep/2 });
+    segs.push({ s:s, i:state.slices.indexOf(s), frac:frac,
+                a0:acc, a1:acc + sweep, mid:acc + sweep/2 });
     acc += sweep;
   });
 
@@ -993,6 +999,23 @@ function buildSVG(){
     }
   }
 
+  // Grab strips: the whole length of every boundary is draggable, not just the
+  // small circle on the selected slice. Drawn last so they sit above the
+  // slices, transparent but wide enough to hit comfortably with a mouse or a
+  // thumb, and present whether or not anything is selected.
+  if(!EXPORTING && segs.length > 1){
+    segs.forEach(function(g, i){
+      var offG = g.s.out ? (+S.explode || 0) : 0;
+      var gx = cx + Math.cos(g.mid) * offG, gy = cy + Math.sin(g.mid) * offG;
+      var inner = rInner > 0 ? rInner : 0;
+      var p0 = polar(gx, gy, Math.max(0, inner - 2), g.a0);
+      var p1 = polar(gx, gy, R + 2, g.a0);
+      out.push('<line class="edge-grab" data-edge="start" data-idx="' + g.i +
+        '" x1="' + p0[0].toFixed(1) + '" y1="' + p0[1].toFixed(1) +
+        '" x2="' + p1[0].toFixed(1) + '" y2="' + p1[1].toFixed(1) + '"/>');
+    });
+  }
+
   if(S.centerText && rInner > 24){
     out.push('<text x="' + cx + '" y="' + cy + '" text-anchor="middle" dominant-baseline="central" font-size="' +
       Math.round(Math.min(rInner * 0.42, S.fontSize * 1.9)) + '" font-weight="700" fill="' + S.fg + '">' +
@@ -1022,7 +1045,7 @@ function buildSVG(){
         (item.right ? Rt : L).push(item);
       });
       var lh = (+S.fontSize) * 1.25;
-      // Wrapped names can run to several lines — size the slot off the tallest.
+      // Wrapped names can run to several lines - size the slot off the tallest.
       var nLines = 1;
       L.concat(Rt).forEach(function(a){
         var n = labelText(a.g.frac, a.g.s, wrapChars).split("\n").length;
@@ -1073,10 +1096,10 @@ function buildSVG(){
       var pct = ((+s.value)/total*100).toFixed(+S.decimals || 0);
       // Trim the name so a long one cannot run into the next column.
       var lfs = Math.max(10, S.fontSize - 2);
-      var tail = " — " + pct + "%";
+      var tail = " - " + pct + "%";
       var room = Math.max(6, Math.floor((colW - 40) / (lfs * 0.55)) - tail.length);
       var nm = String(s.name);
-      if(nm.length > room) nm = nm.slice(0, Math.max(1, room - 1)).replace(/\s+$/, "") + "…";
+      if(nm.length > room) nm = nm.slice(0, Math.max(1, room - 2)).replace(/\s+$/, "") + "...";
       out.push('<rect x="' + x + '" y="' + y + '" width="12" height="12" fill="' + s.color + '"/>');
       out.push('<text x="' + (x + 18) + '" y="' + (y + 10) + '" font-size="' +
         lfs + '" fill="' + S.fg + '">' + esc(nm + tail) + '</text>');
@@ -1217,7 +1240,7 @@ function selectSlice(i){
 function svgPoint(evt){
   var svg = $("#chartBox svg");
   var rect = svg.getBoundingClientRect();
-  // On screen the SVG has no width/height attrs (so it can scale) — read the viewBox.
+  // On screen the SVG has no width/height attrs (so it can scale) - read the viewBox.
   var vb = (svg.getAttribute("viewBox") || "").split(/\s+/);
   var vbW = +vb[2] || rect.width, vbH = +vb[3] || rect.height;
   return {
@@ -1322,7 +1345,7 @@ function initRibbon(){
   showTab("home");
 }
 
-// Contextual "Slice Tools" tab — appears only while a slice is selected.
+// Contextual "Slice Tools" tab - appears only while a slice is selected.
 function renderSliceTab(){
   var tab = $("#tabSlice"), panel = $("#panelSlice");
   if(!tab || !panel) return;
@@ -1490,7 +1513,7 @@ function editLabel(idx, node){
   inp.addEventListener("blur", function(){ done(true); });
 }
 
-// Delete / Backspace removes the selected slice — but never while the user is
+// Delete / Backspace removes the selected slice - but never while the user is
 // typing in a field, or an inline label editor is open.
 document.addEventListener("keydown", function(e){
   // Ctrl+Z / Ctrl+Y (and Ctrl+Shift+Z) work everywhere except inside a field.
@@ -1549,7 +1572,7 @@ function wireChart(){
       e.preventDefault();
       return;
     }
-    var handle = e.target.closest(".edge-handle");
+    var handle = e.target.closest(".edge-handle") || e.target.closest(".edge-grab");
     var path = e.target.closest(".slice-path");
 
     if(handle){
@@ -1568,6 +1591,12 @@ function wireChart(){
       if(nIdx < 0) nIdx = vis.length - 1;
       if(nIdx >= vis.length) nIdx = 0;
       if(vis[nIdx] === vis[vi]) return;                 // only two slices, same one both sides
+      // Grabbing a boundary strip also selects the slice it belongs to, so the
+      // drag works in one gesture instead of requiring a click first.
+      if(+handle.dataset.idx !== selected){
+        selected = +handle.dataset.idx;
+        renderSliceTab();
+      }
       drag = {
         type:"resize",
         sel: vis[vi],                                   // the slice under the pointer
@@ -1611,7 +1640,7 @@ function wireChart(){
   });
 
   svg.addEventListener("mousemove", function(e){
-    var overHandle = e.target.closest(".edge-handle");
+    var overHandle = e.target.closest(".edge-handle") || e.target.closest(".edge-grab");
     var overPath = e.target.closest(".slice-path");
     svg.style.cursor = overHandle ? "ew-resize" : (overPath ? "pointer" : "default");
   });
@@ -1756,7 +1785,7 @@ function exportCSV(){
   toast("CSV exported.", "ok", 1400);
 }
 
-// Full chart as a .json file — the only copy that survives clearing browser
+// Full chart as a .json file - the only copy that survives clearing browser
 // data or moving to another machine.
 function exportProject(){
   var payload = { app:"piechart.studio", version:1, saved:new Date().toISOString(), chart:state };
@@ -1802,7 +1831,7 @@ function exportPNG(scale){
     ctx.drawImage(img, 0, 0);
     cv.toBlob(function(b){ downloadBlob(b, fileBase() + ".png"); }, "image/png");
   };
-  img.onerror = function(){ toast("PNG export failed — use the SVG button instead.", "err"); };
+  img.onerror = function(){ toast("PNG export failed - use the SVG button instead.", "err"); };
   img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(r.svg);
 }
 
@@ -2018,7 +2047,7 @@ function initEvents(){
       // Commit the pre-clear state first: refreshAll() calls autosave(), whose
       // debounced history push would otherwise overwrite the restore point.
       pushHistory(true);
-      // Clear wipes the chart's content, not its styling — palette, shape and
+      // Clear wipes the chart's content, not its styling - palette, shape and
       // label settings stay put (Reset Options is the one that restores those).
       state.slices = [];
       state.title = "";
@@ -2070,7 +2099,7 @@ function initEvents(){
     var rd = new FileReader();
     rd.onload = function(){
       pendingFileText = rd.result;
-      $("#fileStatus").textContent = "Loaded " + f.name + " — " + parseData(pendingFileText).length + " rows found.";
+      $("#fileStatus").textContent = "Loaded " + f.name + " - " + parseData(pendingFileText).length + " rows found.";
     };
     rd.readAsText(f);
   });
@@ -2092,7 +2121,7 @@ function initEvents(){
         localStorage.setItem(LS_PRESETS, JSON.stringify(all));
         toast("Saved in this browser: " + name, "ok");
       } catch(e){
-        toast("Browser storage is full — use Save to file instead.", "err", 4000);
+        toast("Browser storage is full - use Save to file instead.", "err", 4000);
       }
     });
   });
