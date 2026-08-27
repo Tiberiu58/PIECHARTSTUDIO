@@ -118,6 +118,10 @@ button.icon{padding:4px 8px;line-height:1}
 /* Invisible but thick: the whole boundary line is a drag target. */
 .edge-grab{stroke:transparent;stroke-width:16;cursor:ew-resize;fill:none}
 .edge-grab:hover{stroke:rgba(127,127,127,.18)}
+/* The chart owns its gestures: without this the browser treats a drag as a
+   scroll or a pinch and the slice never moves. */
+#chartBox svg{touch-action:none}
+#chartBox svg *{touch-action:none}
 .lbl{cursor:text}
 .lbl:hover{text-decoration:underline}
 #lblEdit{position:absolute;z-index:60;font:inherit;font-weight:600;padding:3px 6px;
@@ -244,14 +248,19 @@ button.icon{padding:4px 8px;line-height:1}
   .stage{padding:0;
     height:calc(100vh - var(--chromeH,52px));
     height:calc(100dvh - var(--chromeH,52px));   /* dvh dodges the URL bar */
-    background:#fff;display:flex;align-items:center;justify-content:center;
+    background:#fff;display:flex;align-items:flex-start;justify-content:center;
     overflow:hidden;gap:0}
-  #chartWrap{margin:0;max-width:100%;width:100%;display:flex;
-    align-items:center;justify-content:center;min-height:0}
-  #chartBox{width:100%;display:flex;align-items:center;justify-content:center;min-height:0}
-  /* Keep the height cap fitStage() computed; a percentage here would not
-     constrain anything inside a flex parent with no fixed height. */
-  #chartBox svg{max-width:100%;max-height:var(--chartMaxH,100%);height:auto}
+  #chartWrap{margin:0;max-width:100%;width:100%;height:100%;display:flex;
+    align-items:flex-start;justify-content:center;min-height:0}
+  #chartBox{width:100%;height:100%;display:flex;align-items:flex-start;
+    justify-content:center;min-height:0}
+  /* Fill the sheet: the SVG scales to whichever of width or height runs out
+     first, so the pie is as large as the screen allows and the legend below
+     it stays on screen. */
+  #chartBox svg{width:100%;height:100%;max-width:100%;
+    max-height:var(--chartMaxH,100%);object-fit:contain}
+  /* A fingertip is far wider than a mouse pointer. */
+  .edge-grab{stroke-width:34}
 }
 
 /* Portrait only: just the two primary actions. They are hidden rather
@@ -921,14 +930,25 @@ function buildSVG(){
   var data = S.slices.filter(function(s){ return (+s.value || 0) > 0; });
   var total = data.reduce(function(a,s){ return a + (+s.value || 0); }, 0);
   var size = Math.max(240, +S.size || 640);
+  // The phone canvas is deliberately small in user units. The SVG is scaled to
+  // the screen, so a smaller canvas means a larger scale factor, which is what
+  // makes the legend text legible instead of shrinking away to nothing.
+  var LAND = !EXPORTING && isPhoneLandscape();
+  if(!EXPORTING && isPhone()) size = LAND ? 300 : 380;
   var legendOn = S.legend && data.length > 0;
 
-  var padT = (S.title ? 38 : 0) + (S.subtitle ? 22 : 0) + 18;
+  var PHONE = !EXPORTING && isPhone();
+  // On a phone the pie is pulled towards the top and the legend below it is
+  // scaled up, because at this size the default legend is barely readable.
+  var padT = (S.title ? 38 : 0) + (S.subtitle ? 22 : 0) + (PHONE ? 8 : 18);
 
   // Callout labels sit outside the circle; widen the canvas to fit the longest
   // one on each side instead of shrinking the pie into an unreadable disc.
   // The canvas may grow only until it hits 16:10 - past that, labels wrap.
-  var isCallout = (S.labelMode === "callout");
+  // Callout labels need wide side margins, which on a phone squeeze the pie to
+  // nothing. The legend below already names every slice, so drop the callouts
+  // and give the width back to the chart.
+  var isCallout = (S.labelMode === "callout") && !PHONE;
   var CHAR_W = (+S.fontSize) * 0.56;   // ~0.56em per char for the serif stack
   var ELBOW = 48;
   var sideRoom = 0, wrapChars = 0;
@@ -963,15 +983,37 @@ function buildSVG(){
   var W = size + sideRoom * 2;
 
   // Legend: more columns and airier rows as the canvas gets wider.
-  var legendCols = legendOn ? Math.max(1, Math.min(4, Math.floor(W / 320))) : 2;
+  var legendCols, legendGap, legendFS;
+  if(PHONE){
+    // Two columns unless the canvas is genuinely narrow, and rows tall enough
+    // to read at arm's length.
+    legendCols = legendOn ? (W >= 560 ? 2 : 1) : 2;
+    legendGap  = 46;
+    legendFS   = Math.max(20, Math.round(size * 0.045));
+  } else {
+    legendCols = legendOn ? Math.max(1, Math.min(4, Math.floor(W / 320))) : 2;
+    legendGap  = Math.min(40, Math.round(22 + Math.max(0, (W - 640)) * 0.014));
+    legendFS   = Math.max(10, S.fontSize - 2);
+  }
   var legendRows = legendOn ? Math.ceil(data.length / legendCols) : 0;
-  var legendGap  = Math.round(22 + Math.max(0, (W - 640)) * 0.014);   // 22px -> ~36px
-  legendGap = Math.min(legendGap, 40);
-  var legendH = legendOn ? legendRows * legendGap + 18 : 0;
+  var legendH = legendOn ? legendRows * legendGap + (PHONE ? 26 : 18) : 0;
 
-  var H = size + padT + legendH;
+  // Landscape phone: the legend goes beside the pie rather than beneath it,
+  // because the screen has width to spare and almost no height.
+  var sideLegend = LAND && legendOn;
+  var legendW = 0;
+  if(sideLegend){
+    legendCols = 1;
+    legendRows = data.length;
+    legendH = legendRows * legendGap + 26;
+    legendW = Math.round(size * 1.05);
+    W = size + legendW;
+  }
 
-  var cx = W / 2, cy = padT + size / 2;
+  var H = sideLegend ? Math.max(size + padT, legendH + padT) : (size + padT + legendH);
+
+  var cx = sideLegend ? size / 2 : W / 2;
+  var cy = padT + size / 2;
   var R = Math.max(30, size/2 - 10 - (+S.explode || 0) * 0.7);
   var rInner = R * ((+S.hole || 0) / 100);
 
@@ -1038,8 +1080,8 @@ function buildSVG(){
       [[gSel.a0, "start"], [gSel.a1, "end"]].forEach(function(pair){
         var p = polar(sx, sy, hr, pair[0]);
         out.push('<circle class="edge-handle" data-edge="' + pair[1] + '" data-idx="' + selected +
-          '" cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="8" fill="#fff" stroke="' +
-          gSel.s.color + '" stroke-width="3"/>');
+          '" cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="' + HANDLE_R +
+          '" fill="#fff" stroke="' + gSel.s.color + '" stroke-width="3"/>');
       });
     }
   }
@@ -1133,32 +1175,52 @@ function buildSVG(){
   }
 
   if(legendOn){
-    var y0 = padT + size + 12;
-    var colW = W / legendCols;
+    var y0 = sideLegend ? padT + 4 : padT + size + (PHONE ? 18 : 12);
+    var x0 = sideLegend ? size + 8 : 0;
+    var colW = sideLegend ? legendW : (W / legendCols);
+    var lfs = legendFS;
+    var sw  = Math.round(lfs * 0.85);          // swatch scales with the text
+    var pad = Math.round(lfs * 0.65);
     data.forEach(function(s, i){
       var col = i % legendCols, row = Math.floor(i / legendCols);
-      var x = col * colW + 18, y = y0 + row * legendGap;
+      var x = x0 + col * colW + (PHONE ? 24 : 18), y = y0 + row * legendGap;
       var pct = ((+s.value)/total*100).toFixed(+S.decimals || 0);
       // Trim the name so a long one cannot run into the next column.
-      var lfs = Math.max(10, S.fontSize - 2);
       var tail = " - " + pct + "%";
-      var room = Math.max(6, Math.floor((colW - 40) / (lfs * 0.55)) - tail.length);
+      var room = Math.max(6, Math.floor((colW - sw - pad - 24) / (lfs * 0.55)) - tail.length);
       var nm = String(s.name);
       if(nm.length > room) nm = nm.slice(0, Math.max(1, room - 2)).replace(/\s+$/, "") + "...";
-      out.push('<rect x="' + x + '" y="' + y + '" width="12" height="12" fill="' + s.color + '"/>');
-      out.push('<text x="' + (x + 18) + '" y="' + (y + 10) + '" font-size="' +
+      out.push('<rect x="' + x + '" y="' + y + '" width="' + sw + '" height="' + sw +
+        '" fill="' + s.color + '"/>');
+      out.push('<text x="' + (x + sw + pad) + '" y="' + (y + sw * 0.85) + '" font-size="' +
         lfs + '" fill="' + S.fg + '">' + esc(nm + tail) + '</text>');
     });
   }
 
   out.push("</svg>");
   GEO = { cx:cx, cy:cy, R:R, rInner:rInner, dir:dir, start0:start0, total:total, segs:segs,
-          W:W, H:H, legendY: padT + size + 12, legendOn: legendOn, legendH: legendH };
+          W:W, H:H, legendY: (sideLegend ? padT + 4 : padT + size + 12),
+          legendOn: legendOn, legendH: legendH };
   return { svg: out.join(""), W: W, H: H };
 }
 
+// Touch needs bigger targets than a mouse.
+function isPhone(){
+  try{ return window.matchMedia(
+    "(max-width:640px), (max-width:950px) and (max-height:520px)").matches; }
+  catch(e){ return false; }
+}
+// A phone held sideways: wide but short. The chart has to lay itself out
+// beside the legend there, not above it.
+function isPhoneLandscape(){
+  try{ return window.matchMedia("(max-width:950px) and (max-height:520px)").matches; }
+  catch(e){ return false; }
+}
+var HANDLE_R = 8;
+
 var lastSVG = "";
 function draw(){
+  HANDLE_R = isPhone() ? 13 : 8;
   var r = buildSVG();
   lastSVG = r.svg;
   var cb = $("#chartBox");
@@ -1609,7 +1671,10 @@ function wireChart(){
   var svg = $("#chartBox svg");
   if(!svg) return;
 
-  svg.addEventListener("mousedown", function(e){
+  svg.addEventListener("pointerdown", function(e){
+    if(e.pointerType === "mouse" && e.button !== 0) return;   // left button only
+    dragPointerId = e.pointerId;
+    try{ svg.setPointerCapture(e.pointerId); }catch(err){}
     var lblHit = e.target.closest(".lbl");
     if(lblHit){
       // Click renames; a drag past a few px moves the label instead.
@@ -1686,7 +1751,8 @@ function wireChart(){
     });
   });
 
-  svg.addEventListener("mousemove", function(e){
+  svg.addEventListener("pointermove", function(e){
+    if(e.pointerType !== "mouse") return;                     // no hover on touch
     var overHandle = e.target.closest(".edge-handle") || e.target.closest(".edge-grab");
     var overPath = e.target.closest(".slice-path");
     svg.style.cursor = overHandle ? "ew-resize" : (overPath ? "pointer" : "default");
@@ -1695,8 +1761,13 @@ function wireChart(){
 
 var labelWasDragged = false;
 
-document.addEventListener("mousemove", function(e){
+var dragPointerId = null;
+
+document.addEventListener("pointermove", function(e){
   if(!drag || !GEO) return;
+  if(dragPointerId !== null && e.pointerId !== dragPointerId) return;
+  // While dragging, this gesture belongs to the chart, not to page scrolling.
+  if(e.cancelable) e.preventDefault();
 
   if(drag.type === "maybe-label"){
     if(Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 4){
@@ -1770,14 +1841,17 @@ document.addEventListener("mousemove", function(e){
   }
 });
 
-document.addEventListener("mouseup", function(){
+function endDrag(){
   if(drag){
     if(drag.type === "resize" || drag.type === "explode" || drag.type === "label"){
       renderSlices(); autosave();
     }
     drag = null;
   }
-});
+  dragPointerId = null;
+}
+document.addEventListener("pointerup", endDrag);
+document.addEventListener("pointercancel", endDrag);
 
 /* ---------------- export ---------------- */
 function downloadBlob(blob, name){
