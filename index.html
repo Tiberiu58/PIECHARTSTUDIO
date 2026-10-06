@@ -121,6 +121,23 @@ button.icon{padding:4px 8px;line-height:1}
 .slice-path:hover{opacity:.86}
 .slice-path.is-sel{filter:brightness(1.14) drop-shadow(0 0 6px rgba(0,0,0,.45))}
 .edge-handle{cursor:ew-resize}
+/* Insert-a-slice buttons, revealed on hover near a boundary. The group keeps
+   pointer events so it stays hittable while invisible; only the paint is
+   toggled, via the fill/stroke opacity of the shapes themselves. A CSS
+   transition on the group's own opacity was unreliable here, so visibility is
+   driven by the .on class on the children instead. */
+.ins-plus{cursor:pointer}
+/* No CSS transition here on purpose: a transition on these opacities leaves
+   the computed value stuck at 0 in a document that is not painting yet, so the
+   buttons would never appear. The toggle is instant instead. */
+.ins-dot,.ins-sign{opacity:0}
+.ins-plus.on .ins-dot,.ins-plus.on .ins-sign,
+.ins-plus:hover .ins-dot,.ins-plus:hover .ins-sign{opacity:1}
+.ins-hit{fill:transparent}
+.ins-dot{fill:var(--panel);stroke:var(--accent);stroke-width:2}
+.ins-sign{stroke:var(--accent);stroke-width:2;stroke-linecap:round;fill:none}
+.ins-plus:hover .ins-dot{fill:var(--accent)}
+.ins-plus:hover .ins-sign{stroke:#fff}
 /* Invisible but thick: the whole boundary line is a drag target. */
 .edge-grab{stroke:transparent;stroke-width:16;cursor:ew-resize;fill:none}
 .edge-grab:hover{stroke:rgba(127,127,127,.18)}
@@ -1153,6 +1170,24 @@ function buildSVG(){
         '" x1="' + p0[0].toFixed(1) + '" y1="' + p0[1].toFixed(1) +
         '" x2="' + p1[0].toFixed(1) + '" y2="' + p1[1].toFixed(1) + '"/>');
     });
+
+    // Insert buttons: a + just outside the rim on every boundary, which adds a
+    // slice between the two it separates. Hidden until the pointer is near, so
+    // the chart stays clean; each one carries a generous invisible hit circle
+    // because the visible glyph is deliberately small.
+    var insR = R + INSERT_GAP;
+    segs.forEach(function(g, i){
+      var prev = segs[(i - 1 + segs.length) % segs.length];
+      var p = polar(cx, cy, insR, g.a0);
+      var x = p[0], y = p[1];
+      out.push('<g class="ins-plus" data-after="' + prev.i + '" data-before="' + g.i +
+        '" transform="translate(' + x.toFixed(1) + ',' + y.toFixed(1) + ')">' +
+        '<circle class="ins-hit" r="' + (INSERT_R + 9) + '"/>' +
+        '<circle class="ins-dot" r="' + INSERT_R + '"/>' +
+        '<path class="ins-sign" d="M ' + (-INSERT_R * 0.5) + ' 0 H ' + (INSERT_R * 0.5) +
+        ' M 0 ' + (-INSERT_R * 0.5) + ' V ' + (INSERT_R * 0.5) + '"/>' +
+        '</g>');
+    });
   }
 
   if(S.centerText && rInner > 24){
@@ -1291,10 +1326,14 @@ function isPhoneLandscape(){
   catch(e){ return false; }
 }
 var HANDLE_R = 8;
+// The + that inserts a slice: how far past the rim it sits, and how big it is.
+var INSERT_GAP = 17, INSERT_R = 9;
 
 var lastSVG = "";
 function draw(){
   HANDLE_R = isPhone() ? 13 : 8;
+  INSERT_R = isPhone() ? 12 : 9;
+  INSERT_GAP = isPhone() ? 22 : 17;
   var r = buildSVG();
   lastSVG = r.svg;
   var cb = $("#chartBox");
@@ -1434,6 +1473,38 @@ var drag = null;
 function selectSlice(i){
   selected = i;
   draw();
+}
+
+// Add a slice at a boundary. It is worth 5% of the current total and is added
+// on top rather than taken from its neighbours, so no existing slice changes
+// value; every percentage simply restates against the larger total.
+function insertSliceAt(afterIdx, beforeIdx){
+  var live = state.slices.filter(function(s){ return (+s.value || 0) > 0; });
+  var total = live.reduce(function(a, s){ return a + (+s.value || 0); }, 0);
+  // With nothing to measure against, fall back to a value that reads as 5%
+  // once it is the only slice present.
+  var value = total > 0 ? total * 0.05 : 5;
+  value = Math.round(value * 100) / 100;
+
+  // Sit the new slice directly after its left-hand neighbour. Dropping to the
+  // end would put it somewhere else entirely once slices have been reordered.
+  var at = (afterIdx >= 0 && afterIdx < state.slices.length) ? afterIdx + 1 : state.slices.length;
+
+  var used = {};
+  state.slices.forEach(function(s){ used[String(s.color).toUpperCase()] = 1; });
+  var pal = PALETTES[state.palette] || PALETTES.Studio;
+  var color = null;
+  for(var i = 0; i < pal.length; i++){
+    if(!used[pal[i].toUpperCase()]){ color = pal[i]; break; }
+  }
+  if(!color) color = pal[state.slices.length % pal.length];
+
+  state.slices.splice(at, 0, { name:"New slice", value:value, color:color, out:false });
+  selected = at;
+  draw();
+  updateTotals();
+  autosave();
+  toast("Slice added - 5% of the previous total.", "ok", 1600);
 }
 
 // Mouse position in SVG user units (handles CSS scaling of the <svg>).
@@ -1768,6 +1839,12 @@ function wireChart(){
     if(e.pointerType === "mouse" && e.button !== 0) return;   // left button only
     dragPointerId = e.pointerId;
     try{ svg.setPointerCapture(e.pointerId); }catch(err){}
+    var plusHit = e.target.closest(".ins-plus");
+    if(plusHit){
+      // Handled on click; swallow here so it never starts a boundary drag.
+      e.preventDefault();
+      return;
+    }
     var lblHit = e.target.closest(".lbl");
     if(lblHit){
       // Click renames; a drag past a few px moves the label instead.
@@ -1831,6 +1908,12 @@ function wireChart(){
   // Click a label on the chart to rename that slice in place.
   svg.addEventListener("click", function(e){
     if(labelWasDragged){ labelWasDragged = false; return; }
+    var plus = e.target.closest(".ins-plus");
+    if(plus){
+      e.stopPropagation();
+      insertSliceAt(+plus.dataset.after, +plus.dataset.before);
+      return;
+    }
     var lbl = e.target.closest(".lbl");
     if(lbl) editLabel(+lbl.dataset.idx, lbl);
   });
@@ -1848,8 +1931,37 @@ function wireChart(){
     if(e.pointerType !== "mouse") return;                     // no hover on touch
     var overHandle = e.target.closest(".edge-handle") || e.target.closest(".edge-grab");
     var overPath = e.target.closest(".slice-path");
-    svg.style.cursor = overHandle ? "ew-resize" : (overPath ? "pointer" : "default");
+    var overPlus = e.target.closest(".ins-plus");
+    svg.style.cursor = overPlus ? "pointer"
+                     : (overHandle ? "ew-resize" : (overPath ? "pointer" : "default"));
+    revealNearestPlus(e);
   });
+
+  svg.addEventListener("pointerleave", function(){ revealNearestPlus(null); });
+}
+
+// The + glyphs are small, so CSS :hover alone would make them fiddly to find.
+// Light up whichever one the pointer is closest to, as long as it is within
+// reach of that boundary.
+function revealNearestPlus(e){
+  var svg = $("#chartBox svg");
+  if(!svg) return;
+  var plus = svg.querySelectorAll(".ins-plus");
+  if(!plus.length) return;
+
+  var best = null, bestD = Infinity;
+  if(e && !drag){
+    var p = svgPoint(e);
+    for(var i = 0; i < plus.length; i++){
+      var m = /translate\(([-\d.]+),([-\d.]+)\)/.exec(plus[i].getAttribute("transform") || "");
+      if(!m) continue;
+      var dx = p.x - (+m[1]), dy = p.y - (+m[2]);
+      var d = Math.sqrt(dx*dx + dy*dy);
+      if(d < bestD){ bestD = d; best = plus[i]; }
+    }
+    if(bestD > INSERT_R + 30) best = null;     // too far to mean anything
+  }
+  for(var j = 0; j < plus.length; j++) plus[j].classList.toggle("on", plus[j] === best);
 }
 
 var labelWasDragged = false;
