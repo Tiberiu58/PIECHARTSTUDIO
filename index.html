@@ -133,6 +133,13 @@ button.icon{padding:4px 8px;line-height:1}
 .ins-dot,.ins-sign{opacity:0}
 .ins-plus.on .ins-dot,.ins-plus.on .ins-sign,
 .ins-plus:hover .ins-dot,.ins-plus:hover .ins-sign{opacity:1}
+/* There is no hover on a touch screen, so the reveal never fires there and the
+   buttons would be invisible yet still tappable - a ring of hidden targets that
+   swallowed boundary drags. Show them permanently instead: a tap target has to
+   be visible to be avoidable. */
+@media (hover:none), (max-width:640px), (max-width:950px) and (max-height:520px){
+  .ins-dot,.ins-sign{opacity:1}
+}
 .ins-hit{fill:transparent}
 .ins-dot{fill:var(--panel);stroke:var(--accent);stroke-width:2}
 .ins-sign{stroke:var(--accent);stroke-width:2;stroke-linecap:round;fill:none}
@@ -150,7 +157,12 @@ button.icon{padding:4px 8px;line-height:1}
 /* Boundary handles claim the gesture outright: dragging one is the whole
    point and it has a large vertical component. */
 #chartBox svg .edge-grab,
-#chartBox svg .edge-handle{touch-action:none}
+#chartBox svg .edge-handle,
+/* The insert buttons must claim the gesture too. Left on the default the
+   browser treated a tap as a scroll, so the press was stolen before pointerup
+   and nothing was inserted - and because they sit at the outer end of a
+   boundary, that also ate the start of a boundary drag. */
+#chartBox svg .ins-plus{touch-action:none}
 /* Slices and labels cover most of the screen, so they must not swallow a
    downward swipe: pan-y keeps pull-to-refresh and scrolling working while
    still letting the app read horizontal drags. Their drags (explode, move a
@@ -1175,7 +1187,16 @@ function buildSVG(){
     // slice between the two it separates. Hidden until the pointer is near, so
     // the chart stays clean; each one carries a generous invisible hit circle
     // because the visible glyph is deliberately small.
+    //
+    // Only where the ring actually fits outside the pie. On a phone the pie
+    // fills the width, so the buttons at the left and right extremes fell off
+    // the canvas - and because there is no hover on touch they were invisible
+    // while still taking the press, which swallowed the start of a boundary
+    // drag. Phones add slices with the + Slice button in the bottom bar.
     var insR = R + INSERT_GAP;
+    var insNeed = insR + INSERT_R + 9;
+    var insFits = (insNeed <= cx) && (insNeed <= W - cx) && (insNeed <= cy + padT);
+    if(insFits){
     segs.forEach(function(g, i){
       var prev = segs[(i - 1 + segs.length) % segs.length];
       var p = polar(cx, cy, insR, g.a0);
@@ -1188,6 +1209,7 @@ function buildSVG(){
         ' M 0 ' + (-INSERT_R * 0.5) + ' V ' + (INSERT_R * 0.5) + '"/>' +
         '</g>');
     });
+    }
   }
 
   if(S.centerText && rInner > 24){
