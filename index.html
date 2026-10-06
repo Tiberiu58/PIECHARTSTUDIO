@@ -1837,14 +1837,21 @@ function wireChart(){
 
   svg.addEventListener("pointerdown", function(e){
     if(e.pointerType === "mouse" && e.button !== 0) return;   // left button only
-    dragPointerId = e.pointerId;
-    try{ svg.setPointerCapture(e.pointerId); }catch(err){}
+
+    // The insert buttons are settled before anything captures the pointer.
+    // Capturing retargets every later pointer event, and the click, to the
+    // <svg>, so a handler further down that looks for .ins-plus on the click
+    // would never find it. Remember the hit now and act on pointerup.
     var plusHit = e.target.closest(".ins-plus");
     if(plusHit){
-      // Handled on click; swallow here so it never starts a boundary drag.
+      pendingPlus = { after:+plusHit.dataset.after, before:+plusHit.dataset.before,
+                      x:e.clientX, y:e.clientY };
       e.preventDefault();
       return;
     }
+
+    dragPointerId = e.pointerId;
+    try{ svg.setPointerCapture(e.pointerId); }catch(err){}
     var lblHit = e.target.closest(".lbl");
     if(lblHit){
       // Click renames; a drag past a few px moves the label instead.
@@ -1908,12 +1915,8 @@ function wireChart(){
   // Click a label on the chart to rename that slice in place.
   svg.addEventListener("click", function(e){
     if(labelWasDragged){ labelWasDragged = false; return; }
-    var plus = e.target.closest(".ins-plus");
-    if(plus){
-      e.stopPropagation();
-      insertSliceAt(+plus.dataset.after, +plus.dataset.before);
-      return;
-    }
+    // Insert buttons are handled on pointerup (see endDrag), not here: pointer
+    // capture retargets this click to the <svg>, so the lookup would miss.
     var lbl = e.target.closest(".lbl");
     if(lbl) editLabel(+lbl.dataset.idx, lbl);
   });
@@ -1967,6 +1970,9 @@ function revealNearestPlus(e){
 var labelWasDragged = false;
 
 var dragPointerId = null;
+// An insert button pressed but not yet released. Resolved on pointerup so a
+// press that slides away is abandoned rather than inserting.
+var pendingPlus = null;
 
 document.addEventListener("pointermove", function(e){
   if(!drag || !GEO) return;
@@ -2046,7 +2052,17 @@ document.addEventListener("pointermove", function(e){
   }
 });
 
-function endDrag(){
+function endDrag(e){
+  // A press that started on an insert button fires here: insert if the pointer
+  // is still roughly where it went down, so sliding off cancels like a button.
+  if(pendingPlus){
+    var p = pendingPlus;
+    pendingPlus = null;
+    if(e && e.type === "pointerup" &&
+       Math.abs(e.clientX - p.x) + Math.abs(e.clientY - p.y) < 12){
+      insertSliceAt(p.after, p.before);
+    }
+  }
   if(drag){
     if(drag.type === "resize" || drag.type === "explode" || drag.type === "label"){
       renderSlices(); autosave();
