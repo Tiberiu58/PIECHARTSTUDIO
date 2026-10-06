@@ -1639,7 +1639,7 @@ function renderSliceTab(){
       '<div class="rb-items"><div class="rb-col">' +
         '<div class="rb-f">Name <input type="text" class="txt" id="sfName" value="' + escAttr(s.name) + '"></div>' +
         '<div class="rb-f">Value <input type="number" class="num" id="sfVal" value="' + s.value + '" step="any">' +
-          '<b style="color:var(--text)">' + ((+s.value||0)/total*100).toFixed(1) + '%</b></div>' +
+          '<b id="sfPct" style="color:var(--text)">' + ((+s.value||0)/total*100).toFixed(1) + '%</b></div>' +
       '</div></div><div class="rb-group-label">Selected slice</div>' +
     '</div>' +
     '<div class="rb-group">' +
@@ -1683,7 +1683,17 @@ function renderSliceTab(){
   }
 
   $("#sfName").addEventListener("input", function(){ s.name = this.value; chartOnly(); });
-  $("#sfVal").addEventListener("input", function(){ s.value = parseFloat(this.value)||0; chartOnly(); });
+  $("#sfVal").addEventListener("input", function(){
+    s.value = parseFloat(this.value) || 0;
+    // Refresh the share in place. Re-rendering the panel would move focus out
+    // of the field being typed into.
+    var pctEl = $("#sfPct");
+    if(pctEl){
+      var t = state.slices.reduce(function(a, x){ return a + (+x.value || 0); }, 0) || 1;
+      pctEl.textContent = ((+s.value || 0) / t * 100).toFixed(1) + "%";
+    }
+    chartOnly();
+  });
   $("#sfColor").addEventListener("input", function(){ s.color = this.value; chartOnly(); });
   Array.prototype.forEach.call(panel.querySelectorAll("#sfSw i"), function(sw){
     sw.addEventListener("click", function(){
@@ -1768,20 +1778,28 @@ function editLabel(idx, node){
   document.body.appendChild(inp);
   inp.focus(); inp.select();
 
+  // Removing a focused input fires blur synchronously, while it is still
+  // attached. Guarding on parentNode alone let that blur run done(true) after
+  // an Escape, so cancelling silently saved instead. Latch on an explicit flag
+  // and drop the blur listener before detaching.
+  var finished = false;
+  var onBlur = function(){ done(true); };
   var done = function(commit){
-    if(!inp.parentNode) return;
+    if(finished) return;
+    finished = true;
+    inp.removeEventListener("blur", onBlur);
     if(commit && inp.value.trim()){
       state.slices[idx].name = inp.value.trim();
       autosave();
     }
-    inp.remove();
+    if(inp.parentNode) inp.remove();
     draw();
   };
   inp.addEventListener("keydown", function(ev){
     if(ev.key === "Enter"){ ev.preventDefault(); done(true); }
     else if(ev.key === "Escape"){ ev.preventDefault(); done(false); }
   });
-  inp.addEventListener("blur", function(){ done(true); });
+  inp.addEventListener("blur", onBlur);
 }
 
 // Delete / Backspace removes the selected slice - but never while the user is
@@ -1915,10 +1933,9 @@ function wireChart(){
   // Click a label on the chart to rename that slice in place.
   svg.addEventListener("click", function(e){
     if(labelWasDragged){ labelWasDragged = false; return; }
-    // Insert buttons are handled on pointerup (see endDrag), not here: pointer
-    // capture retargets this click to the <svg>, so the lookup would miss.
-    var lbl = e.target.closest(".lbl");
-    if(lbl) editLabel(+lbl.dataset.idx, lbl);
+    // Nothing to do here. Pointer capture retargets this click to the <svg>,
+    // so .closest() can never identify what was actually hit; labels and the
+    // insert buttons are both resolved on pointerup in endDrag instead.
   });
 
   svg.addEventListener("dblclick", function(e){
@@ -2066,6 +2083,18 @@ function endDrag(e){
   if(drag){
     if(drag.type === "resize" || drag.type === "explode" || drag.type === "label"){
       renderSlices(); autosave();
+    }
+    // Still "maybe": the pointer went down on a label and never moved, so this
+    // was a click. Rename in place. It has to happen here rather than in a
+    // click handler because pointer capture retargets the click to the <svg>,
+    // which would hide which label was hit.
+    if(drag.type === "maybe-label" && e && e.type === "pointerup"){
+      var lblIdx = drag.idx;
+      drag = null;
+      dragPointerId = null;
+      var node = document.querySelector('#chartBox .lbl[data-idx="' + lblIdx + '"]');
+      if(node) editLabel(lblIdx, node);
+      return;
     }
     drag = null;
   }
