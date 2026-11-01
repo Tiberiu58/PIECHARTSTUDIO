@@ -165,9 +165,8 @@ button.icon{padding:4px 8px;line-height:1}
 #chartBox svg .ins-plus{touch-action:none}
 /* Slices and labels cover most of the screen, so they must not swallow a
    downward swipe: pan-y keeps pull-to-refresh and scrolling working while
-   still letting the app read horizontal drags. Their drags (explode, move a
-   label) start only after a few pixels, and preventDefault() in the move
-   handler takes the gesture from there. */
+   still letting the app read horizontal drags (resize a slice, move a label);
+   preventDefault() in the move handler takes the gesture from there. */
 #chartBox svg .slice-path,
 #chartBox svg .lbl{touch-action:pan-y}
 .lbl{cursor:text}
@@ -1399,7 +1398,10 @@ function placeLegendBtn(){
   var vb = (svg.getAttribute("viewBox") || "").split(/\s+/);
   var vbW = +vb[2] || 1, vbH = +vb[3] || 1;
   var rect = svg.getBoundingClientRect();
-  var scale = rect.width / vbW;
+  // A letterboxed chart scales by whichever side runs out first and is centred
+  // in the other, so the width alone overstates the scale on a short screen.
+  var scale = Math.min(rect.width / vbW, rect.height / vbH) || (rect.width / vbW);
+  var offY = Math.max(0, (rect.height - vbH * scale) / 2);
 
   var yMid;
   if(GEO.legendOn){
@@ -1409,7 +1411,7 @@ function placeLegendBtn(){
     // legend hidden: park it just below the chart body
     yMid = vbH - 10;
   }
-  btn.style.top = (yMid * scale) + "px";
+  btn.style.top = (offY + yMid * scale) + "px";
   btn.hidden = false;
 }
 window.addEventListener("resize", placeLegendBtn);
@@ -1497,6 +1499,53 @@ function selectSlice(i){
   draw();
 }
 
+// Start a percentage drag on one edge of a slice. The slice under the pointer
+// follows it and trades value with the neighbour on that side, so the total
+// stays fixed. Pass an edge ("start" or "end"), or null to use whichever edge
+// is nearer to the point given. Returns false when there is nothing to trade.
+function beginResize(idx, edge, point){
+  var vis = state.slices.filter(function(s){ return (+s.value||0) > 0; });
+  var vi = vis.indexOf(state.slices[idx]);
+  if(vi < 0 || vis.length < 2) return false;        // nothing to trade value with
+  var fromBody = !edge;                             // grabbed the slice, not a boundary
+  var grabOff = 0;
+  if(!edge){
+    var rel = angleFrom(point);
+    var TWO_PI = Math.PI * 2;
+    var gap = function(a){ var d = Math.abs(rel - a) % TWO_PI; return Math.min(d, TWO_PI - d); };
+    edge = (gap(cumAt(vi)) <= gap(cumAt(vi + 1))) ? "start" : "end";
+    // The grab point sits inside the slice, not on the edge. Remember the gap so
+    // the edge moves by however far the pointer moves instead of jumping to it.
+    grabOff = ((edge === "start") ? cumAt(vi) : cumAt(vi + 1)) - rel;
+    grabOff = ((grabOff % TWO_PI) + TWO_PI + Math.PI) % TWO_PI - Math.PI;
+  }
+  // A pie is a closed ring, so the neighbour wraps around the ends.
+  var nIdx = (edge === "start") ? vi - 1 : vi + 1;
+  if(nIdx < 0) nIdx = vis.length - 1;
+  if(nIdx >= vis.length) nIdx = 0;
+  if(vis[nIdx] === vis[vi]) return false;           // only two slices, same one both sides
+  // Grabbing a slice or boundary also selects it, so the drag works in one
+  // gesture instead of requiring a click first.
+  if(idx !== selected){
+    selected = idx;
+    renderSliceTab();
+  }
+  drag = {
+    type:"resize",
+    fromBody: fromBody,                             // stop updating once the pointer leaves the pie
+    grabOff: grabOff,                               // edge angle minus pointer angle at grab
+    moved: !fromBody,                               // body grabs wait out a tap's jitter first
+    sel: vis[vi],                                   // the slice under the pointer
+    nb: vis[nIdx],                                  // the neighbour giving/taking value
+    edge: edge,
+    sum: (+vis[vi].value||0) + (+vis[nIdx].value||0),
+    total: vis.reduce(function(x,s){ return x + (+s.value||0); }, 0),
+    // Sweep is measured from the edge that does NOT move during this drag.
+    anchor: (edge === "start") ? cumAt(vi + 1) : cumAt(vi)
+  };
+  return true;
+}
+
 // Add a slice at a boundary. It is worth 5% of the current total and is added
 // on top rather than taken from its neighbours, so no existing slice changes
 // value; every percentage simply restates against the larger total.
@@ -1530,8 +1579,19 @@ function insertSliceAt(afterIdx, beforeIdx){
 }
 
 // Mouse position in SVG user units (handles CSS scaling of the <svg>).
+// The box the SVG sits in rarely has the viewBox's exact shape: a capped height
+// on a short laptop screen, or the full-screen sheet on a phone, letterboxes the
+// chart. The screen matrix knows that offset and scale; dividing the box by the
+// viewBox does not, and put every drag off target by the letterbox margin.
 function svgPoint(evt){
   var svg = $("#chartBox svg");
+  var m = svg.getScreenCTM && svg.getScreenCTM();
+  if(m && m.a && m.d){
+    var pt = svg.createSVGPoint();
+    pt.x = evt.clientX; pt.y = evt.clientY;
+    var q = pt.matrixTransform(m.inverse());
+    return { x: q.x, y: q.y };
+  }
   var rect = svg.getBoundingClientRect();
   // On screen the SVG has no width/height attrs (so it can scale) - read the viewBox.
   var vb = (svg.getAttribute("viewBox") || "").split(/\s+/);
@@ -1905,46 +1965,19 @@ function wireChart(){
     var path = e.target.closest(".slice-path");
 
     if(handle){
-      // Resize: the handle you grab always belongs to the selected slice, and
-      // that slice follows the pointer. Value is traded with the neighbour on
-      // the side being dragged, so the total stays fixed and the rest of the
-      // chart does not move. Anchoring on the slice's *opposite* edge means the
-      // sweep is measured from a point that stays put during the drag, which is
-      // what makes a slice at the top behave the same as one anywhere else.
-      var vis = state.slices.filter(function(s){ return (+s.value||0) > 0; });
-      var vi = vis.indexOf(state.slices[+handle.dataset.idx]);
-      if(vi < 0 || vis.length < 2) return;              // nothing to trade value with
-      var edge = handle.dataset.edge;
-      // A pie is a closed ring, so the neighbour wraps around the ends.
-      var nIdx = (edge === "start") ? vi - 1 : vi + 1;
-      if(nIdx < 0) nIdx = vis.length - 1;
-      if(nIdx >= vis.length) nIdx = 0;
-      if(vis[nIdx] === vis[vi]) return;                 // only two slices, same one both sides
-      // Grabbing a boundary strip also selects the slice it belongs to, so the
-      // drag works in one gesture instead of requiring a click first.
-      if(+handle.dataset.idx !== selected){
-        selected = +handle.dataset.idx;
-        renderSliceTab();
-      }
-      drag = {
-        type:"resize",
-        sel: vis[vi],                                   // the slice under the pointer
-        nb: vis[nIdx],                                  // the neighbour giving/taking value
-        edge: edge,
-        sum: (+vis[vi].value||0) + (+vis[nIdx].value||0),
-        total: vis.reduce(function(x,s){ return x + (+s.value||0); }, 0),
-        // Sweep is measured from the edge that does NOT move during this drag.
-        anchor: (edge === "start") ? cumAt(vi + 1) : cumAt(vi)
-      };
-      e.preventDefault();
+      if(beginResize(+handle.dataset.idx, handle.dataset.edge, null)) e.preventDefault();
       return;
     }
 
     if(path){
+      // Dragging a slice changes its share of the pie. It never pulls the slice
+      // out of the chart: the grab resizes whichever of its two edges is nearer.
       var idx = +path.dataset.idx;
       selectSlice(idx);
-      drag = { type:"maybe-explode", idx:idx, x:e.clientX, y:e.clientY, moved:false };
-      e.preventDefault();
+      if(beginResize(idx, null, svgPoint(e))){
+        drag.x = e.clientX; drag.y = e.clientY;
+        e.preventDefault();
+      }
       return;
     }
 
@@ -2047,31 +2080,22 @@ document.addEventListener("pointermove", function(e){
     return;
   }
 
-  if(drag.type === "maybe-explode"){
-    if(Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 6){
-      drag.type = "explode"; drag.moved = true;
-    } else return;
-  }
-
-  if(drag.type === "explode"){
-    var p = svgPoint(e);
-    var s = state.slices[drag.idx];
-    var seg = null;
-    GEO.segs.forEach(function(g){ if(g.s === s) seg = g; });
-    if(!seg) return;
-    // project cursor onto the slice's mid-angle to get pull-out distance
-    var dx = p.x - GEO.cx, dy = p.y - GEO.cy;
-    var dist = dx * Math.cos(seg.mid) + dy * Math.sin(seg.mid);
-    var pull = Math.max(0, dist - GEO.R * 0.55);
-    s.out = pull > 6;
-    if(s.out) state.explode = Math.round(Math.min(40, Math.max(6, pull)));
-    draw();
-    return;
-  }
-
   if(drag.type === "resize"){
     var TWO_PI = Math.PI * 2;
-    var rel = angleFrom(svgPoint(e));
+    // A tap on a slice selects it. Only a real drag may change its value.
+    if(!drag.moved){
+      if(Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) < 4) return;
+      drag.moved = true;
+    }
+    var p = svgPoint(e);
+    // Dragging a slice body stays on the pie: once the pointer leaves the ring,
+    // the value holds where it was and resumes if the pointer comes back. Near
+    // the centre the angle swings wildly with tiny moves, so hold there too.
+    if(drag.fromBody){
+      var dist = Math.hypot(p.x - GEO.cx, p.y - GEO.cy);
+      if(dist > GEO.R || dist < GEO.R * 0.12) return;
+    }
+    var rel = angleFrom(p) + drag.grabOff;
     // Sweep from the anchor (the selected slice's fixed edge) to the pointer.
     // angleFrom() wraps at 0/2PI, which sits at the top of the chart, so keep
     // the delta in [0, 2PI) and it stays continuous wherever the slice is.
@@ -2103,7 +2127,7 @@ function endDrag(e){
     }
   }
   if(drag){
-    if(drag.type === "resize" || drag.type === "explode" || drag.type === "label"){
+    if(drag.type === "resize" || drag.type === "label"){
       renderSlices(); autosave();
     }
     // Still "maybe": the pointer went down on a label and never moved, so this
