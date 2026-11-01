@@ -127,6 +127,7 @@ button.icon{padding:4px 8px;line-height:1}
 #chartBox, button, .rb-tab{-webkit-tap-highlight-color:transparent}
 button{touch-action:manipulation}
 .slice-path.is-sel{filter:brightness(1.14) drop-shadow(0 0 6px rgba(0,0,0,.45))}
+#chartBox.dragging .slice-path.is-sel{filter:brightness(1.14)}
 .edge-handle{cursor:ew-resize}
 /* Insert-a-slice buttons, revealed on hover near a boundary. The group keeps
    pointer events so it stays hittable while invisible; only the paint is
@@ -228,6 +229,7 @@ button{touch-action:manipulation}
 .rb-sw i{width:14px;height:14px;border-radius:0;cursor:pointer;border:1px solid var(--line);display:block}
 .rb-sw i:hover{outline:2px solid var(--accent);outline-offset:1px}
 .rb-empty{color:var(--muted);font-size:12.5px;padding:8px 12px}
+#phoneTools{display:none}           /* phones only; see the phone block below */
 /* Content pages (How To / FAQ) */
 .page{display:none;line-height:1.62}
 .page.on{display:block;max-width:780px;margin:0 auto;padding:30px 24px 70px}
@@ -287,6 +289,26 @@ button{touch-action:manipulation}
 
   /* No ribbon body, no tabs, no legend toggle. */
   #ribbon .rb-body{display:none !important}
+
+  /* Slice Tools row under the header. Fixed height either way, so tapping a
+     slice never makes the chart jump. 16px inputs: iOS zooms the page on
+     focusing anything smaller. */
+  #phoneTools{display:block;height:58px;padding:5px 8px;border-top:1px solid var(--line);
+    background:var(--panel)}
+  #phoneTools .pt-empty{display:none;height:100%;align-items:center;justify-content:center;
+    font-size:13px;color:var(--muted)}
+  #phoneTools.empty .pt-empty{display:flex}
+  #phoneTools.empty .pt-fields{display:none}
+  .pt-fields{display:flex;gap:6px;align-items:flex-end;height:100%}
+  .pt-f{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .pt-f span{font-size:10.5px;line-height:1;color:var(--muted)}
+  .pt-f input{font-size:16px;padding:5px 6px;height:34px;width:100%;min-width:0;margin:0}
+  .pt-name{flex:1 1 auto}
+  .pt-num{flex:0 0 66px}
+  #ptOut{flex:none;height:34px;padding:0 10px;font-size:13px;white-space:nowrap}
+  #ptOut[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:#fff}
+  /* Tapping a chart label renames it in place; under 16px iOS zooms in. */
+  #lblEdit{font-size:16px}
   .rb-tabs{display:none !important}
   #legendBtn{display:none !important}
 
@@ -357,6 +379,14 @@ button{touch-action:manipulation}
 /* Landscape phone: the full set of actions appears, the way a phone
    calculator reveals its extra keys when the device is turned. */
 @media(max-width:950px) and (max-height:520px){
+  /* Height is scarce sideways but width is not: one slim row, captions
+     beside their fields instead of above them. */
+  #phoneTools{height:42px;padding:4px 8px}
+  .pt-fields{align-items:center;gap:10px}
+  .pt-f{flex-direction:row;align-items:center;gap:6px}
+  .pt-f span{font-size:12px}
+  .pt-num{flex:0 0 auto}
+  .pt-num input{width:66px}
   .rb-top{gap:5px;padding:4px 8px}
   .rb-top button{min-height:34px;font-size:12px;padding:4px 9px}
   .stage{height:calc(100vh - var(--chromeH,44px));
@@ -396,6 +426,17 @@ code{background:var(--panel2);padding:1px 4px;border-radius:0}
     <button id="btnSvg">SVG</button>
     <button id="btnCsv">CSV</button>
     <button id="btnTheme" class="ghost" title="Toggle editor theme">Theme</button>
+  </div>
+  <!-- Phone-only Slice Tools: a compact row under the header. The ribbon
+       body is hidden on phones; this keeps the essentials one tap away. -->
+  <div id="phoneTools" class="empty">
+    <div class="pt-empty">Tap a slice to edit it</div>
+    <div class="pt-fields">
+      <label class="pt-f pt-name"><span>Name</span><input type="text" id="ptName" placeholder="Name" autocomplete="off" enterkeyhint="done"></label>
+      <label class="pt-f pt-num"><span>Value</span><input type="number" id="ptVal" placeholder="Value" inputmode="decimal" step="any" min="0"></label>
+      <label class="pt-f pt-num"><span>%</span><input type="number" id="ptPct" placeholder="%" inputmode="decimal" step="any" min="0" max="99.9"></label>
+      <button type="button" id="ptOut" aria-pressed="false">Pull out</button>
+    </div>
   </div>
   <div class="rb-body">
 
@@ -602,7 +643,7 @@ code{background:var(--panel2);padding:1px 4px;border-radius:0}
   <p>Yes. Open the <strong>Design</strong> tab and drag the <strong>Hole</strong> slider. Any value above zero turns the pie into a donut, and you can put a total or a label in the middle using <strong>Center text</strong>.</p>
 
   <div class="q">Why does dragging a slice edge not change the total?</div>
-  <p>Resizing moves value between the two slices either side of the edge you are dragging. That keeps the total fixed so the rest of the chart does not shift under your cursor while you work. To change the total instead, type a new number in the value box.</p>
+  <p>Resizing moves value between the slice you are dragging and the slices ahead of its moving edge. The nearest one gives way first, and once it is down to 1% the next one starts to shrink, so you can keep dragging as far as you like. That keeps the total fixed so the rest of the chart does not shift under your cursor while you work. To change the total instead, type a new number in the value box.</p>
 
   <div class="q">My percentages do not add up to 100. Why?</div>
   <p>Percentages are calculated from the values you entered, so they always reflect the real total. If the numbers look wrong, check that every row uses the same unit - mixing currency with percentages makes one slice dominate the chart.</p>
@@ -1462,6 +1503,86 @@ function mountSVG(markup){
   }
 }
 
+// The per-frame redraw during a drag: the chart and the live numbers, nothing
+// else. draw() also rebuilds the desktop slice ribbon (hidden on a phone, but
+// still built), measures the header twice and repositions the legend button;
+// none of that changes mid-drag, and on a phone it was most of each frame.
+// endDrag() runs a full draw() once the finger lifts.
+function drawLight(){
+  var r = buildSVG();
+  lastSVG = r.svg;
+  mountSVG(r.svg);
+  wireChart();
+  updateTotals();
+  syncPhoneTools();
+}
+
+// The phone Slice Tools row: show the selected slice, or the "tap a slice"
+// hint. Fields being typed in are left alone.
+function syncPhoneTools(){
+  var box = document.getElementById("phoneTools");
+  if(!box) return;
+  var s = state.slices[selected];
+  box.classList.toggle("empty", !s);
+  if(!s) return;
+  var nm = document.getElementById("ptName");
+  if(nm && document.activeElement !== nm) nm.value = s.name;
+  var out = document.getElementById("ptOut");
+  if(out) out.setAttribute("aria-pressed", s.out ? "true" : "false");
+  syncSliceFields();
+}
+
+function initPhoneTools(){
+  var nm = document.getElementById("ptName"), val = document.getElementById("ptVal"),
+      pct = document.getElementById("ptPct"), out = document.getElementById("ptOut");
+  if(!nm) return;
+  var cur = function(){ return state.slices[selected]; };
+  // Typing redraws the chart only, so the field keeps focus; leaving the field
+  // settles everything else (slice list, history) once.
+  var settle = function(){ draw(); renderSlices(); };
+  nm.addEventListener("input", function(){
+    var s = cur(); if(!s) return;
+    s.name = nm.value; drawLight(); autosave();
+  });
+  val.addEventListener("input", function(){
+    var s = cur(), v = parseFloat(val.value);
+    if(!s || !(v > 0)) return;          // 0 would make the slice vanish mid-edit
+    s.value = v; drawLight(); autosave();
+  });
+  // A percentage is restated as a value against the other slices, which keep
+  // theirs: p% of the new total means v = p * others / (100 - p).
+  pct.addEventListener("input", function(){
+    var s = cur(), p = parseFloat(pct.value);
+    if(!s || !(p > 0 && p < 100)) return;
+    var others = state.slices.reduce(function(a,x){ return x === s ? a : a + (+x.value||0); }, 0);
+    if(!(others > 0)) return;
+    s.value = Math.round(p * others / (100 - p) * 100) / 100;
+    drawLight(); autosave();
+  });
+  [nm, val, pct].forEach(function(el){ el.addEventListener("change", settle); });
+  out.addEventListener("click", function(){
+    var s = cur(); if(!s) return;
+    s.out = !s.out;
+    if(s.out && (+state.explode||0) < 6) state.explode = 14;
+    draw(); autosave();
+  });
+}
+
+// Refresh the value and percent shown for the selected slice without
+// rebuilding the controls, so a drag can keep them live and a field being
+// typed in is never overwritten.
+function syncSliceFields(){
+  var s = state.slices[selected];
+  if(!s) return;
+  var total = state.slices.reduce(function(a,x){ return a + (+x.value||0); }, 0) || 1;
+  var pct = (+s.value||0) / total * 100;
+  var set = function(id, v){ var el = document.getElementById(id); if(el && document.activeElement !== el) el.value = v; };
+  set("sfVal", s.value);
+  var sp = document.getElementById("sfPct"); if(sp) sp.textContent = pct.toFixed(1) + "%";
+  set("ptVal", s.value);
+  set("ptPct", +pct.toFixed(1));
+}
+
 var lastSVG = "";
 function draw(){
   HANDLE_R = isPhone() ? 13 : 8;
@@ -1478,6 +1599,7 @@ function draw(){
   renderSliceTab();
   placeLegendBtn();
   syncPhoneBar();
+  syncPhoneTools();
 }
 
 // Colour and Delete only mean something with a slice selected; the swatch
@@ -1612,30 +1734,36 @@ function selectSlice(i){
 }
 
 // Start a percentage drag on one edge of a slice. The slice under the pointer
-// follows it and trades value with the neighbour on that side, so the total
-// stays fixed. Pass an edge ("start" or "end"), or null to use whichever edge
-// is nearer to the point given. Returns false when there is nothing to trade.
+// follows it and takes value from (or gives it to) the slices on that side, so
+// the total stays fixed. point is where the pointer went down, in SVG units.
+// Pass an edge ("start" or "end"), or null to use whichever edge is nearer to
+// that point. Returns false when there is nothing to trade.
 function beginResize(idx, edge, point){
   var vis = state.slices.filter(function(s){ return (+s.value||0) > 0; });
   var vi = vis.indexOf(state.slices[idx]);
   if(vi < 0 || vis.length < 2) return false;        // nothing to trade value with
-  var fromBody = !edge;                             // grabbed the slice, not a boundary
-  var grabOff = 0;
+  var TWO_PI = Math.PI * 2;
+  var rel = angleFrom(point);
   if(!edge){
-    var rel = angleFrom(point);
-    var TWO_PI = Math.PI * 2;
     var gap = function(a){ var d = Math.abs(rel - a) % TWO_PI; return Math.min(d, TWO_PI - d); };
     edge = (gap(cumAt(vi)) <= gap(cumAt(vi + 1))) ? "start" : "end";
-    // The grab point sits inside the slice, not on the edge. Remember the gap so
-    // the edge moves by however far the pointer moves instead of jumping to it.
-    grabOff = ((edge === "start") ? cumAt(vi) : cumAt(vi + 1)) - rel;
-    grabOff = ((grabOff % TWO_PI) + TWO_PI + Math.PI) % TWO_PI - Math.PI;
   }
-  // A pie is a closed ring, so the neighbour wraps around the ends.
-  var nIdx = (edge === "start") ? vi - 1 : vi + 1;
-  if(nIdx < 0) nIdx = vis.length - 1;
-  if(nIdx >= vis.length) nIdx = 0;
-  if(vis[nIdx] === vis[vi]) return false;           // only two slices, same one both sides
+  // The grab point is rarely exactly on the edge: inside the slice, or anywhere
+  // across a boundary strip that is 34 units wide on a phone. Remember the gap
+  // so the edge moves by however far the pointer moves instead of jumping to it.
+  var grabOff = ((edge === "start") ? cumAt(vi) : cumAt(vi + 1)) - rel;
+  grabOff = ((grabOff % TWO_PI) + TWO_PI + Math.PI) % TWO_PI - Math.PI;
+  // The slices the moving edge sweeps into, nearest first. A pie is a closed
+  // ring, so this runs all the way round to the slice on the far side.
+  var step = (edge === "start") ? -1 : 1, order = [];
+  for(var k = 1; k < vis.length; k++) order.push(vis[(vi + step * k + vis.length) % vis.length]);
+  var total = vis.reduce(function(x,s){ return x + (+s.value||0); }, 0);
+  // Every slice keeps at least 1% of the pie, so a drag can squeeze a slice
+  // down but never delete it.
+  var floor = total * 0.01;
+  var orig = order.map(function(s){ return +s.value || 0; });
+  var spare = orig.reduce(function(a, v){ return a + Math.max(0, v - floor); }, 0);
+  var selOrig = +vis[vi].value || 0;
   // Grabbing a slice or boundary also selects it, so the drag works in one
   // gesture instead of requiring a click first.
   if(idx !== selected){
@@ -1644,14 +1772,17 @@ function beginResize(idx, edge, point){
   }
   drag = {
     type:"resize",
-    fromBody: fromBody,                             // stop updating once the pointer leaves the pie
     grabOff: grabOff,                               // edge angle minus pointer angle at grab
-    moved: !fromBody,                               // body grabs wait out a tap's jitter first
+    moved: false,                                   // wait out a tap's jitter first
     sel: vis[vi],                                   // the slice under the pointer
-    nb: vis[nIdx],                                  // the neighbour giving/taking value
+    selOrig: selOrig,
+    order: order,                                   // slices the edge sweeps into, nearest first
+    orig: orig,                                     // their values when the drag began
+    floor: floor,
     edge: edge,
-    sum: (+vis[vi].value||0) + (+vis[nIdx].value||0),
-    total: vis.reduce(function(x,s){ return x + (+s.value||0); }, 0),
+    total: total,
+    minVal: Math.min(selOrig, floor),
+    maxVal: selOrig + spare,
     // Sweep is measured from the edge that does NOT move during this drag.
     anchor: (edge === "start") ? cumAt(vi + 1) : cumAt(vi)
   };
@@ -2079,7 +2210,10 @@ function wireChart(){
     var path = e.target.closest(".slice-path");
 
     if(handle){
-      if(beginResize(+handle.dataset.idx, handle.dataset.edge, null)) e.preventDefault();
+      if(beginResize(+handle.dataset.idx, handle.dataset.edge, svgPoint(e))){
+        drag.x = e.clientX; drag.y = e.clientY;
+        e.preventDefault();
+      }
       return;
     }
 
@@ -2156,23 +2290,19 @@ function revealNearestPlus(e){
 var labelWasDragged = false;
 
 // Pointer events can arrive faster than the screen refreshes (120Hz phone
-// panels send two per frame), and draw() rebuilds the whole SVG and the slice
-// ribbon and reads layout twice. Redrawing per event made drags stutter on
-// phones; during a drag, redraw at most once per frame instead.
+// panels send two per frame). Redrawing per event made drags stutter on
+// phones; during a drag, redraw at most once per frame, and only the chart
+// (drawLight). The .dragging class drops the selected slice's drop-shadow
+// filter for the duration, which phone GPUs repaint expensively every frame.
 var redrawFrame = 0;
 function redrawSoon(){
   if(redrawFrame) return;
+  var box = document.getElementById("chartBox");
+  if(box) box.classList.add("dragging");
   redrawFrame = requestAnimationFrame(function(){
     redrawFrame = 0;
-    draw(); updateTotals();
+    drawLight();
   });
-}
-// Settle a pending frame now, so whatever runs next sees the final values.
-function flushRedraw(){
-  if(!redrawFrame) return;
-  cancelAnimationFrame(redrawFrame);
-  redrawFrame = 0;
-  draw(); updateTotals();
 }
 
 var dragPointerId = null;
@@ -2222,13 +2352,11 @@ document.addEventListener("pointermove", function(e){
       drag.moved = true;
     }
     var p = svgPoint(e);
-    // Dragging a slice body stays on the pie: once the pointer leaves the ring,
-    // the value holds where it was and resumes if the pointer comes back. Near
-    // the centre the angle swings wildly with tiny moves, so hold there too.
-    if(drag.fromBody){
-      var dist = Math.hypot(p.x - GEO.cx, p.y - GEO.cy);
-      if(dist > GEO.R || dist < GEO.R * 0.12) return;
-    }
+    // Only the angle matters, so the drag keeps tracking wherever the finger
+    // wanders - a thumb on a thin ring is off it half the time, and holding the
+    // value there made drags stop short. Near the centre the angle swings
+    // wildly with tiny moves, so hold there.
+    if(Math.hypot(p.x - GEO.cx, p.y - GEO.cy) < GEO.R * 0.12) return;
     var rel = angleFrom(p) + drag.grabOff;
     // Sweep from the anchor (the selected slice's fixed edge) to the pointer.
     // angleFrom() wraps at 0/2PI, which sits at the top of the chart, so keep
@@ -2236,15 +2364,31 @@ document.addEventListener("pointermove", function(e){
     var delta = (drag.edge === "start") ? (drag.anchor - rel) : (rel - drag.anchor);
     delta = delta % TWO_PI;
     if(delta < 0) delta += TWO_PI;
-    var frac = delta / TWO_PI;                             // share of the pair taken by sel
-    var maxFrac = drag.sum / drag.total;
-    // Beyond the pair the pointer has swung past the neighbour; snap to whichever
-    // end it is nearer instead of letting the value wrap round the circle.
-    if(frac > maxFrac) frac = (frac - maxFrac < 1 - frac) ? maxFrac : 0;
-    frac = Math.max(maxFrac * 0.02, Math.min(maxFrac * 0.98, frac));
-    var selVal = frac * drag.total;
-    drag.sel.value = Math.round(selVal * 100) / 100;
-    drag.nb.value  = Math.round((drag.sum - selVal) * 100) / 100;
+    var frac = delta / TWO_PI;                             // share of the pie taken by sel
+    var minF = drag.minVal / drag.total, maxF = drag.maxVal / drag.total;
+    // Past the limit the pointer has swung round behind the fixed edge; snap to
+    // whichever end it is nearer instead of letting the value wrap round.
+    if(frac > maxF) frac = (frac - maxF < 1 - frac) ? maxF : minF;
+    frac = Math.max(minF, Math.min(maxF, frac));
+    // Growing eats into the slices ahead of the moving edge in turn: the
+    // nearest is squeezed to its floor before the next one gives anything, so
+    // the edge follows the finger as far as it goes instead of stopping when
+    // one neighbour runs out. Shrinking hands the value to the nearest one.
+    // Always from the values at the start of the drag, so dragging back
+    // restores every slice the edge passed over.
+    var extra = frac * drag.total - drag.selOrig, others = 0;
+    drag.order.forEach(function(s, i){
+      var v = drag.orig[i];
+      if(extra < 0 && i === 0) v -= extra;
+      else if(extra > 0){
+        var take = Math.min(extra, Math.max(0, v - drag.floor));
+        v -= take; extra -= take;
+      }
+      s.value = Math.round(v * 100) / 100;
+      others += s.value;
+    });
+    // The dragged slice takes whatever is left, so rounding never moves the total.
+    drag.sel.value = Math.round((drag.total - others) * 100) / 100;
     redrawSoon();
   }
 });
@@ -2265,10 +2409,13 @@ function endDrag(e){
       insertSliceAt(p.after, p.before);
     }
   }
-  flushRedraw();
+  if(redrawFrame){ cancelAnimationFrame(redrawFrame); redrawFrame = 0; }
+  var box = document.getElementById("chartBox");
+  if(box) box.classList.remove("dragging");
   if(drag){
     if(drag.type === "resize" || drag.type === "label"){
-      renderSlices(); autosave();
+      // Frames during the drag were light; settle everything once at the end.
+      draw(); updateTotals(); renderSlices(); autosave();
     }
     // Still "maybe": the pointer went down on a label and never moved, so this
     // was a click. Rename in place. It has to happen here rather than in a
@@ -2386,10 +2533,70 @@ function exportPNG(scale){
     var ctx = cv.getContext("2d");
     ctx.setTransform(s, 0, 0, s, 0, 0);
     ctx.drawImage(img, 0, 0);
-    cv.toBlob(function(b){ downloadBlob(b, fileBase() + ".png"); }, "image/png");
+    cv.toBlob(function(b){
+      // toBlob hands back null when the canvas could not be encoded (memory
+      // limits on some phones); say so instead of failing silently.
+      if(!b){ toast("PNG export failed - use the SVG button instead.", "err"); return; }
+      savePNG(b, fileBase() + ".png");
+    }, "image/png");
   };
   img.onerror = function(){ toast("PNG export failed - use the SVG button instead.", "err"); };
   img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(r.svg);
+}
+
+// In-app browsers (LinkedIn, Instagram, Facebook and friends) ignore blob
+// downloads entirely, and many visitors arrive through exactly those.
+function inAppBrowser(){
+  return /FBAN|FBAV|Instagram|LinkedInApp|Line\/|Twitter|TikTok|Snapchat|; wv\)/i.test(navigator.userAgent || "");
+}
+
+// Getting a PNG onto a phone. The share sheet is the native route (it offers
+// Save Image / Save to Photos); a plain download is next; and where neither
+// works, show the image so it can be saved with a long press.
+function savePNG(blob, name){
+  var file = null;
+  try{ file = new File([blob], name, {type:"image/png"}); }catch(e){}
+  var canShare = isPhone() && file && navigator.canShare && navigator.share &&
+                 (function(){ try{ return navigator.canShare({files:[file]}); }catch(e){ return false; } })();
+  if(canShare){
+    navigator.share({files:[file], title:name}).then(function(){}, function(err){
+      if(err && err.name === "AbortError") return;      // the user closed the sheet
+      fallback();
+    });
+    return;
+  }
+  fallback();
+
+  function fallback(){
+    if(inAppBrowser()){ showPNGPreview(blob); return; }
+    downloadBlob(blob, name);
+    toast("PNG downloaded.", "ok", 1400);
+  }
+}
+
+function showPNGPreview(blob){
+  var old = document.getElementById("dlgPng");
+  if(old) old.remove();
+  var url = URL.createObjectURL(blob);
+  var dlg = document.createElement("dialog");
+  dlg.id = "dlgPng";
+  dlg.innerHTML =
+    '<p style="margin:0 0 10px;font-size:14px">Press and hold the image, then choose <b>Save image</b>.</p>' +
+    '<img alt="Your pie chart" style="display:block;width:100%;height:auto;background:#fff;border:1px solid var(--line)">' +
+    '<div class="row" style="justify-content:flex-end;margin-top:12px"><button type="button" class="primary">Done</button></div>';
+  dlg.querySelector("img").src = url;
+  // Clean up straight away on Done; the close event (Escape, Android back) is
+  // the backstop. It is dispatched asynchronously and is not guaranteed to
+  // arrive promptly, so it cannot be the only path.
+  var cleanup = function(){
+    if(!dlg.parentNode) return;
+    if(dlg.open) dlg.close();
+    dlg.remove(); URL.revokeObjectURL(url);
+  };
+  dlg.querySelector("button").addEventListener("click", cleanup);
+  dlg.addEventListener("close", cleanup);
+  document.body.appendChild(dlg);
+  if(dlg.showModal) dlg.showModal(); else dlg.setAttribute("open", "");
 }
 
 /* ---------------- data import ---------------- */
@@ -2738,6 +2945,7 @@ function showBigScreenTip(){
   initRibbon();
   initPages();
   initEvents();
+  initPhoneTools();
   pushHistory(true);   // baseline so the first Ctrl+Z has somewhere to go
   refreshAll();
   showBigScreenTip();
