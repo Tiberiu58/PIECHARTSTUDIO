@@ -1,7 +1,7 @@
 {
   "short_name": "Pie Chart",
   "name": "Pie Chart Studio",
-  "description": "An offline capable pie and donut chart maker. Quick, no sign-up, watermark-free and minimalist.",
+  "description": "Create and edit pie charts and donut charts for free. Works offline, no sign-up or watermark. Import CSV data and export PNG or SVG.",
   "display": "standalone",
   "start_url": "/",
   "scope": "/",
