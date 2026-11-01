@@ -118,7 +118,14 @@ button.icon{padding:4px 8px;line-height:1}
 #chartBox svg{width:var(--chartW,1004px);max-width:100%;max-height:var(--chartMaxH,none);
   height:auto;display:block}
 .slice-path{cursor:pointer;transition:opacity .12s}
-.slice-path:hover{opacity:.86}
+/* Hover only where there is a real hover. On a touch screen :hover sticks to
+   whatever was last tapped, which left the slice you just picked dimmed. */
+@media (hover:hover){ .slice-path:hover{opacity:.86} }
+/* Android paints a blue box over anything tapped; the chart and buttons
+   already show their own state. manipulation drops double-tap-to-zoom, which
+   otherwise holds every button tap back while the browser waits for a second. */
+#chartBox, button, .rb-tab{-webkit-tap-highlight-color:transparent}
+button{touch-action:manipulation}
 .slice-path.is-sel{filter:brightness(1.14) drop-shadow(0 0 6px rgba(0,0,0,.45))}
 .edge-handle{cursor:ew-resize}
 /* Insert-a-slice buttons, revealed on hover near a boundary. The group keeps
@@ -147,7 +154,7 @@ button.icon{padding:4px 8px;line-height:1}
 .ins-plus:hover .ins-sign{stroke:#fff}
 /* Invisible but thick: the whole boundary line is a drag target. */
 .edge-grab{stroke:transparent;stroke-width:16;cursor:ew-resize;fill:none}
-.edge-grab:hover{stroke:rgba(127,127,127,.18)}
+@media (hover:hover){ .edge-grab:hover{stroke:rgba(127,127,127,.18)} }
 /* The chart owns its gestures: without this the browser treats a drag as a
    scroll or a pinch and the slice never moves. */
 /* Only the interactive bits claim the gesture. Blanket touch-action:none on
@@ -308,6 +315,11 @@ button.icon{padding:4px 8px;line-height:1}
     max-height:var(--chartMaxH,100%);object-fit:contain}
   /* A fingertip is far wider than a mouse pointer. */
   .edge-grab{stroke-width:34}
+  /* Dragging a slice resizes it by sweeping round the pie, which is a vertical
+     movement down either side. pan-y let the browser take that as a scroll
+     and cancel the drag. The phone sheet never scrolls, so the slices can own
+     the gesture here; pull-to-refresh still works from the header. */
+  #chartBox svg .slice-path{touch-action:none}
 
   /* Slice actions, pinned to the bottom of the white sheet. */
   #phoneBar{display:flex !important;gap:8px;position:fixed;left:0;right:0;
@@ -316,6 +328,7 @@ button.icon{padding:4px 8px;line-height:1}
   #phoneBar button{flex:1;min-height:46px;font-size:14px;font-weight:600;
     border:1px solid #cbd2dd;background:#fff;color:#111;cursor:pointer;padding:6px 4px}
   #phoneBar button:disabled{opacity:.4}
+  #phoneBar button:not(:disabled):active{background:#eef1f6}
   #phoneBar #pbColor{position:relative}
   #phoneBar #pbColor .sw{display:inline-block;width:13px;height:13px;margin-left:7px;
     border:1px solid rgba(0,0,0,.28);vertical-align:-2px}
@@ -990,6 +1003,17 @@ function labelText(frac, s, wrapChars){
   if(S.valMode === "both") return name + "\n" + wrapWords(raw + "  (" + pct + ")", wrapChars);
   return name;
 }
+// Rendered width of one line of chart text, measured with the chart's own font.
+// Falls back to an estimate of 0.55em per character if canvas is unavailable.
+var measureCtx = null;
+function textWidth(txt, fs, family, bold){
+  try{
+    if(!measureCtx) measureCtx = document.createElement("canvas").getContext("2d");
+    measureCtx.font = (bold ? "600 " : "") + fs + "px " + family;
+    return measureCtx.measureText(txt).width;
+  }catch(e){ return String(txt).length * fs * 0.55; }
+}
+
 function textEl(txt, x, y, fs, fill, anchor, idx){
   var lines = String(txt).split("\n");
   var startDy = -((lines.length - 1) * fs * 1.2) / 2;
@@ -1232,22 +1256,34 @@ function buildSVG(){
       // there to land at a comparable size on screen.
       var insideFS = PHONE ? Math.max(13, Math.round(size * (LAND ? 0.055 : 0.042)))
                            : +S.fontSize;
-      var bandR = rInner > 0 ? (rInner + R) / 2 : R * 0.64;
       segs.forEach(function(g){
         if(g.frac < minFrac) return;
-        if(PHONE){
-          // Longest line of the label, roughly 0.55em per character.
-          var lines = labelText(g.frac, g.s, 0).split(String.fromCharCode(10));
-          var widest = 0;
-          for(var li = 0; li < lines.length; li++)
-            if(lines[li].length > widest) widest = lines[li].length;
-          var needed = widest * insideFS * 0.55;
-          var arc = bandR * Math.abs(g.a1 - g.a0);
-          if(arc < needed) return;        // the legend still names this slice
-        }
         var off = g.s.out ? (+S.explode || 0) : 0;
+        var ox = cx + Math.cos(g.mid)*off, oy = cy + Math.sin(g.mid)*off;
         var rr = rInner > 0 ? (rInner + R) / 2 : R * 0.64;
-        var p = polar(cx + Math.cos(g.mid)*off, cy + Math.sin(g.mid)*off, rr, g.mid);
+        var p = polar(ox, oy, rr, g.mid);
+        if(PHONE){
+          // The label is horizontal, so the arc length is the wrong test: on a
+          // slice down the side of a donut the text runs across the ring, and
+          // a wide slice there let white text spill onto the white page. Check
+          // the label's own box instead - every corner and edge midpoint has to
+          // land inside the slice. textEl sets the first line bold, 1.2em apart.
+          var lines = labelText(g.frac, g.s, 0).split(String.fromCharCode(10));
+          var family = FONTS[S.font] || FONTS.Calibri, widest = 0;
+          for(var li = 0; li < lines.length; li++)
+            widest = Math.max(widest, textWidth(lines[li], insideFS, family, li === 0));
+          var hw = widest / 2, hh = lines.length * insideFS * 1.2 / 2;
+          var span = g.a1 - g.a0, sgn = span < 0 ? -1 : 1, TAU = Math.PI * 2;
+          var inside = function(x, y){
+            var dx = x - ox, dy = y - oy, d = Math.sqrt(dx*dx + dy*dy);
+            if(d < rInner || d > R) return false;
+            var t = ((Math.atan2(dy, dx) - g.a0) * sgn % TAU + TAU) % TAU;
+            return t <= Math.abs(span);
+          };
+          for(var ix = -1; ix <= 1; ix++)
+            for(var iy = -1; iy <= 1; iy++)
+              if((ix || iy) && !inside(p[0] + ix*hw, p[1] + iy*hh)) return;   // the legend still names it
+        }
         out.push(textEl(labelText(g.frac, g.s, 0), p[0], p[1], insideFS, contrast(g.s.color), "middle",
                         S.slices.indexOf(g.s)));
       });
@@ -2041,6 +2077,26 @@ function revealNearestPlus(e){
 
 var labelWasDragged = false;
 
+// Pointer events can arrive faster than the screen refreshes (120Hz phone
+// panels send two per frame), and draw() rebuilds the whole SVG and the slice
+// ribbon and reads layout twice. Redrawing per event made drags stutter on
+// phones; during a drag, redraw at most once per frame instead.
+var redrawFrame = 0;
+function redrawSoon(){
+  if(redrawFrame) return;
+  redrawFrame = requestAnimationFrame(function(){
+    redrawFrame = 0;
+    draw(); updateTotals();
+  });
+}
+// Settle a pending frame now, so whatever runs next sees the final values.
+function flushRedraw(){
+  if(!redrawFrame) return;
+  cancelAnimationFrame(redrawFrame);
+  redrawFrame = 0;
+  draw(); updateTotals();
+}
+
 var dragPointerId = null;
 // An insert button pressed but not yet released. Resolved on pointerup so a
 // press that slides away is abandoned rather than inserting.
@@ -2076,7 +2132,7 @@ document.addEventListener("pointermove", function(e){
     // Stay inside the canvas.
     s.lx = Math.max(6, Math.min(GEO.W - 6, p.x));
     s.ly = Math.max(6, Math.min(GEO.H - 6, p.y));
-    draw();
+    redrawSoon();
     return;
   }
 
@@ -2111,7 +2167,7 @@ document.addEventListener("pointermove", function(e){
     var selVal = frac * drag.total;
     drag.sel.value = Math.round(selVal * 100) / 100;
     drag.nb.value  = Math.round((drag.sum - selVal) * 100) / 100;
-    draw(); updateTotals();
+    redrawSoon();
   }
 });
 
@@ -2126,6 +2182,7 @@ function endDrag(e){
       insertSliceAt(p.after, p.before);
     }
   }
+  flushRedraw();
   if(drag){
     if(drag.type === "resize" || drag.type === "label"){
       renderSlices(); autosave();
