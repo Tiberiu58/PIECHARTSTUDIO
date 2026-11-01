@@ -329,6 +329,15 @@ button{touch-action:manipulation}
     border:1px solid #cbd2dd;background:#fff;color:#111;cursor:pointer;padding:6px 4px}
   #phoneBar button:disabled{opacity:.4}
   #phoneBar button:not(:disabled):active{background:#eef1f6}
+  /* Small card floating just above the bottom bar. */
+  #bigScreenTip:not([hidden]){display:flex;align-items:center;gap:12px;position:fixed;
+    left:12px;right:12px;bottom:calc(74px + env(safe-area-inset-bottom,0px));z-index:46;
+    max-width:420px;margin:0 auto;padding:12px 12px 12px 14px;background:#fff;color:#111;
+    border:1px solid #d5dbe5;border-left:4px solid var(--accent);
+    box-shadow:0 8px 28px rgba(0,0,0,.18);animation:tin .2s ease-out}
+  #bigScreenTip p{margin:0;font-size:14px;line-height:1.4;flex:1}
+  #bigScreenOk{flex:none;min-height:40px;padding:6px 14px;font-size:14px;font-weight:600;
+    border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
   #phoneBar #pbColor{position:relative}
   #phoneBar #pbColor .sw{display:inline-block;width:13px;height:13px;margin-left:7px;
     border:1px solid rgba(0,0,0,.28);vertical-align:-2px}
@@ -633,6 +642,11 @@ code{background:var(--panel2);padding:1px 4px;border-radius:0}
       <button id="pbColor" type="button" disabled>Colour</button>
       <button id="pbDel" type="button" disabled>Delete</button>
       <input type="color" id="pbColorInput" tabindex="-1" aria-hidden="true">
+    </div>
+    <!-- Phone-only notice, shown once per visit. -->
+    <div id="bigScreenTip" role="status" hidden>
+      <p>The full tool is available on larger screens like tablets and computers.</p>
+      <button id="bigScreenOk" type="button">Got it</button>
     </div>
   </main>
 </div>
@@ -1261,6 +1275,7 @@ function buildSVG(){
         var off = g.s.out ? (+S.explode || 0) : 0;
         var ox = cx + Math.cos(g.mid)*off, oy = cy + Math.sin(g.mid)*off;
         var rr = rInner > 0 ? (rInner + R) / 2 : R * 0.64;
+        var txt = labelText(g.frac, g.s, 0);
         var p = polar(ox, oy, rr, g.mid);
         if(PHONE){
           // The label is horizontal, so the arc length is the wrong test: on a
@@ -1268,11 +1283,15 @@ function buildSVG(){
           // a wide slice there let white text spill onto the white page. Check
           // the label's own box instead - every corner and edge midpoint has to
           // land inside the slice. textEl sets the first line bold, 1.2em apart.
-          var lines = labelText(g.frac, g.s, 0).split(String.fromCharCode(10));
-          var family = FONTS[S.font] || FONTS.Calibri, widest = 0;
-          for(var li = 0; li < lines.length; li++)
-            widest = Math.max(widest, textWidth(lines[li], insideFS, family, li === 0));
-          var hw = widest / 2, hh = lines.length * insideFS * 1.2 / 2;
+          //
+          // Testing only the middle of the slice was not enough, though: a slice
+          // dragged past about 20% swings its middle round to the side of the
+          // ring, where no long name fits across it, and its label vanished
+          // however big the slice grew. So try spots either side of the middle,
+          // where the ring runs closer to horizontal, and if the full label fits
+          // nowhere, try the value line on its own before giving up.
+          var NL = String.fromCharCode(10);
+          var family = FONTS[S.font] || FONTS.Calibri;
           var span = g.a1 - g.a0, sgn = span < 0 ? -1 : 1, TAU = Math.PI * 2;
           var inside = function(x, y){
             var dx = x - ox, dy = y - oy, d = Math.sqrt(dx*dx + dy*dy);
@@ -1280,11 +1299,29 @@ function buildSVG(){
             var t = ((Math.atan2(dy, dx) - g.a0) * sgn % TAU + TAU) % TAU;
             return t <= Math.abs(span);
           };
-          for(var ix = -1; ix <= 1; ix++)
-            for(var iy = -1; iy <= 1; iy++)
-              if((ix || iy) && !inside(p[0] + ix*hw, p[1] + iy*hh)) return;   // the legend still names it
+          var fitsAt = function(lines, q){
+            var widest = 0;
+            for(var li = 0; li < lines.length; li++)
+              widest = Math.max(widest, textWidth(lines[li], insideFS, family, li === 0));
+            var hw = widest / 2, hh = lines.length * insideFS * 1.2 / 2;
+            for(var ix = -1; ix <= 1; ix++)
+              for(var iy = -1; iy <= 1; iy++)
+                if((ix || iy) && !inside(q[0] + ix*hw, q[1] + iy*hh)) return false;
+            return true;
+          };
+          var full = txt.split(NL);
+          var variants = full.length > 1 ? [full, full.slice(1)] : [full];
+          var spots = [0, 0.25, -0.25, 0.45, -0.45, 0.65, -0.65];   // fractions of half the slice
+          var found = null;
+          for(var vi = 0; vi < variants.length && !found; vi++)
+            for(var si = 0; si < spots.length && !found; si++){
+              var q = polar(ox, oy, rr, g.mid + spots[si] * span / 2);
+              if(fitsAt(variants[vi], q)) found = { txt: variants[vi].join(NL), p: q };
+            }
+          if(!found) return;                  // the legend still names it
+          txt = found.txt; p = found.p;
         }
-        out.push(textEl(labelText(g.frac, g.s, 0), p[0], p[1], insideFS, contrast(g.s.color), "middle",
+        out.push(textEl(txt, p[0], p[1], insideFS, contrast(g.s.color), "middle",
                         S.slices.indexOf(g.s)));
       });
     } else {
@@ -1386,6 +1423,45 @@ var HANDLE_R = 8;
 // The + that inserts a slice: how far past the rim it sits, and how big it is.
 var INSERT_GAP = 17, INSERT_R = 9;
 
+// Put freshly built chart markup on screen without replacing the <svg> itself.
+// A touch gesture belongs to the element first touched and to the element
+// holding pointer capture (the <svg>). Swapping the whole <svg> on every
+// redraw detached both, so on a phone the rest of the drag went to nodes that
+// were no longer in the page and never reached the document listeners - the
+// slice would not move. Mouse input re-targets on every move, which is why
+// this never showed on a desktop. So: keep the <svg>, swap its contents, and
+// park the node under the finger, hidden, until the finger lifts.
+var gestureNode = null;
+function mountSVG(markup){
+  var cb = $("#chartBox");
+  var cur = cb.querySelector("svg");
+  var tmp = document.createElement("div");
+  tmp.innerHTML = markup;
+  var next = tmp.querySelector("svg");
+  if(!cur || !next){ cb.innerHTML = markup; return; }
+  var i;
+  for(i = cur.attributes.length - 1; i >= 0; i--){
+    var name = cur.attributes[i].name;
+    if(!next.hasAttribute(name)) cur.removeAttribute(name);
+  }
+  for(i = 0; i < next.attributes.length; i++)
+    cur.setAttribute(next.attributes[i].name, next.attributes[i].value);
+  var keep = (gestureNode && cur.contains(gestureNode)) ? gestureNode : null;
+  while(cur.firstChild) cur.removeChild(cur.firstChild);
+  while(next.firstChild) cur.appendChild(next.firstChild);
+  if(keep){
+    // Still attached, so its events bubble; but invisible, and stripped of the
+    // class and index that lookups such as editLabel() search for.
+    keep.removeAttribute("class");
+    keep.removeAttribute("data-idx");
+    keep.setAttribute("visibility", "hidden");
+    var park = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    park.setAttribute("aria-hidden", "true");
+    park.appendChild(keep);
+    cur.appendChild(park);
+  }
+}
+
 var lastSVG = "";
 function draw(){
   HANDLE_R = isPhone() ? 13 : 8;
@@ -1396,7 +1472,7 @@ function draw(){
   var cb = $("#chartBox");
   cb.style.setProperty("--chartW", r.W + "px");   // cap scaling at natural size
   fitStage();
-  cb.innerHTML = r.svg;
+  mountSVG(r.svg);
   wireChart();
   renderInspector();
   renderSliceTab();
@@ -1796,7 +1872,7 @@ function renderSliceTab(){
   // Redraw the chart only (never the ribbon) so focus/caret survive typing.
   function chartOnly(){
     var r = buildSVG(); lastSVG = r.svg;
-    $("#chartBox").innerHTML = r.svg; wireChart();
+    mountSVG(r.svg); wireChart();
     renderInspector(); updateTotals(); autosave();
   }
 
@@ -1969,7 +2045,8 @@ window.addEventListener("resize", fitStage);
 
 function wireChart(){
   var svg = $("#chartBox svg");
-  if(!svg) return;
+  if(!svg || svg.__wired) return;     // mountSVG() keeps the same <svg>: wire it once
+  svg.__wired = true;
 
   svg.addEventListener("pointerdown", function(e){
     if(e.pointerType === "mouse" && e.button !== 0) return;   // left button only
@@ -1987,6 +2064,7 @@ function wireChart(){
     }
 
     dragPointerId = e.pointerId;
+    gestureNode = e.target;
     try{ svg.setPointerCapture(e.pointerId); }catch(err){}
     var lblHit = e.target.closest(".lbl");
     if(lblHit){
@@ -2172,6 +2250,11 @@ document.addEventListener("pointermove", function(e){
 });
 
 function endDrag(e){
+  // The finger is up, so the node parked by mountSVG() has done its job.
+  var parked = gestureNode;
+  gestureNode = null;
+  var park = parked && parked.getAttribute("visibility") === "hidden" && parked.parentNode;
+  if(park && park.parentNode) park.parentNode.removeChild(park);
   // A press that started on an insert button fires here: insert if the pointer
   // is still roughly where it went down, so sliding off cancels like a button.
   if(pendingPlus){
@@ -2633,6 +2716,20 @@ function initEvents(){
   $("#presetClose").addEventListener("click", function(){ $("#dlgPresets").close(); });
 }
 
+// Phones get a trimmed editor (no ribbon), so say once per visit that the full
+// tool lives on bigger screens. Session storage, not local: a returning visitor
+// is reminded on their next visit, but never twice in one.
+function showBigScreenTip(){
+  var tip = document.getElementById("bigScreenTip");
+  if(!tip || !isPhone()) return;
+  try{ if(sessionStorage.getItem("pcs_bigscreen_tip")) return; }catch(e){}
+  tip.hidden = false;
+  try{ sessionStorage.setItem("pcs_bigscreen_tip", "1"); }catch(e){}
+  document.getElementById("bigScreenOk").addEventListener("click", function(){
+    tip.hidden = true;
+  });
+}
+
 (function init(){
   var th = localStorage.getItem("pcs_theme");
   if(th) document.documentElement.setAttribute("data-theme", th);
@@ -2643,6 +2740,7 @@ function initEvents(){
   initEvents();
   pushHistory(true);   // baseline so the first Ctrl+Z has somewhere to go
   refreshAll();
+  showBigScreenTip();
 
   // Register the service worker that makes "offline capable" literal. Wait for
   // load so it never competes with the first paint, and treat any failure as a
